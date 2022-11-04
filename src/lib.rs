@@ -95,15 +95,15 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 ///
 /// # Example
 /// ``` # ignore
-/// use geopolars_gdal::bytes_to_df;
+/// use geopolars_gdal::df_from_bytes;
 /// 
 /// let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
-/// let df = bytes_to_df(geojson, None).unwrap();
+/// let df = df_from_bytes(geojson, None).unwrap();
 /// println!("{}", df);
 /// ```
 ///
 /// TODO: Support zipped, tared and gziped data.
-pub fn bytes_to_df(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, Error> {
+pub fn df_from_bytes(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, Error> {
     static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
@@ -124,7 +124,7 @@ pub fn bytes_to_df(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, 
         dataset.layer(0)?
     };
 
-    layer_to_df(&mut layer, Some(params))
+    df_from_layer(&mut layer, Some(params))
 }
 
 /// Given a filepath, create a dataframe from that file.
@@ -135,13 +135,13 @@ pub fn bytes_to_df(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, 
 ///
 /// # Example
 /// ``` # ignore
-/// use geopolars_gdal::file_to_df;
-/// let df = file_to_df("my_shapefile.shp", None).unwrap();
+/// use geopolars_gdal::df_from_file;
+/// let df = df_from_file("my_shapefile.shp", None).unwrap();
 /// println!("{}", df);
 /// ```
 ///
 /// TODO: Support zipped, tared and gziped data.
-pub fn file_to_df<P: AsRef<Path>>(
+pub fn df_from_file<P: AsRef<Path>>(
     path: P,
     params: Option<Params>,
 ) -> Result<DataFrame, Error> {
@@ -158,7 +158,7 @@ pub fn file_to_df<P: AsRef<Path>>(
         dataset.layer(0)?
     };
 
-    layer_to_df(&mut layer, Some(params))
+    df_from_layer(&mut layer, Some(params))
 }
 
 /// Given a GDAL layer, create a dataframe.
@@ -169,17 +169,17 @@ pub fn file_to_df<P: AsRef<Path>>(
 ///
 /// # Example
 /// ``` # ignore
-/// use geopolars_gdal::{layer_to_df, glal};
+/// use geopolars_gdal::{df_from_layer, glal};
 /// use gdal::vector::sql;
 ///
 /// let dataset = gdal::Dataset::open("my_shapefile.shp")?;
 /// let query = "SELECT kind, is_bridge, highway FROM my_shapefile WHERE highway = 'pedestrian'";
 /// let mut result_set = dataset.execute_sql(query, None, sql::Dialect::DEFAULT).unwrap().unwrap();
 ///
-/// let df = layer_to_df(result_set.deref_mut(), None);
+/// let df = df_from_layer(result_set.deref_mut(), None);
 /// println!("{}", df);
 /// ```
-pub fn layer_to_df<'l>(
+pub fn df_from_layer<'l>(
     layer: &mut gdal::vector::Layer<'l>,
     params: Option<Params>,
 ) -> Result<DataFrame, Error> {
@@ -277,34 +277,34 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_file_to_df() {
-        let _df = file_to_df(
+    fn test_df_from_file() {
+        let _df = df_from_file(
             "test_data/us_states.feature_collection.implicit_4326.json",
             None,
         )
         .unwrap();
         //println!("{}", _df);
 
-        let _df = file_to_df(
+        let _df = df_from_file(
             "test_data/global_large_lakes.feature_collection.implicit_4326.json",
             None,
         )
         .unwrap();
         //println!("{}", _df);
 
-        let _df = file_to_df("test_data/stations.shp", None).unwrap();
+        let _df = df_from_file("test_data/stations.shp", None).unwrap();
         // println!("{}", _df);
     }
 
     #[test]
-    fn test_bytes_to_df() {
+    fn test_df_from_bytes() {
         let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
-        let _df = bytes_to_df(geojson.clone(), None).unwrap();
+        let _df = df_from_bytes(geojson.clone(), None).unwrap();
         //println!("{}", df);
     }
 
     #[test]
-    fn test_layer_to_df() {
+    fn test_df_from_layer() {
         let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
 
         let input_mem_path = format!("/vsimem/geopolars_gdal/test_geojson/layer");
@@ -317,7 +317,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let _df = layer_to_df(&mut result_set, None).unwrap();
+        let _df = df_from_layer(&mut result_set, None).unwrap();
         //println!("{}", _df);
     }
 }
