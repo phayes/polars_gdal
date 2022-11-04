@@ -1,0 +1,11 @@
+[package]
+name = "geopolars_gdal"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+gdal = "0.13"
+geopolars = "0.1.0-alpha.3"
+polars = { vesrion = "0.25", features = ["dtype-binary"] }
