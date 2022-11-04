@@ -12,14 +12,14 @@ Supports reading the following file-formats into GeoPolars:
 
 
 ### Example 1: Dataframe from a file
-```rust
+```rust # ignore
 use geopolars_gdal::df_from_file;
 let df = df_from_file("my_shapefile.shp", None).unwrap();
 println!("{}", df);
 ```
 
 ### Example 2: DataFrame from raw bytes
-```rust
+```rust # ignore
 use geopolars_gdal::df_from_bytes;
 
 let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
@@ -29,14 +29,24 @@ println!("{}", df);
 ```
 
 ### Example 3: Dataframe from GDAL Layer with filtering query
-```rust
-use geopolars_gdal::{df_from_layer, glal};
+```rust # ignore
+use geopolars_gdal::{df_from_layer, gdal};
 use gdal::vector::sql;
 
 let dataset = gdal::Dataset::open("my_shapefile.shp")?;
 let query = "SELECT kind, is_bridge, highway FROM my_shapefile WHERE highway = 'pedestrian'";
 let mut result_set = dataset.execute_sql(query, None, sql::Dialect::DEFAULT).unwrap().unwrap();
 
-let df = df_from_layer(&mut result_set, None);
+let df = df_from_layer(&mut result_set, None).unwrap();
+println!("{}", df);
+```
+
+### Example 4: Dataframe from Latitude / Longitude CSV with custom parsing options
+```rust # ignore
+let mut params = geopolars_gdal::Params::default();
+let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
+params.open_options = Some(&csv_parsing_options);
+ 
+let df = df_from_file("lat_lon_countries.csv", Some(params)).unwrap();
 println!("{}", df);
 ```

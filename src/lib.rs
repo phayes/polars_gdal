@@ -170,15 +170,15 @@ pub fn df_from_file<P: AsRef<Path>>(
 /// for example by applying a SQL filter or a spatial filter.
 ///
 /// # Example
-/// ``` # ignore
-/// use geopolars_gdal::{df_from_layer, glal};
+/// ```rust # ignore
+/// use geopolars_gdal::{df_from_layer, gdal};
 /// use gdal::vector::sql;
 ///
 /// let dataset = gdal::Dataset::open("my_shapefile.shp")?;
 /// let query = "SELECT kind, is_bridge, highway FROM my_shapefile WHERE highway = 'pedestrian'";
 /// let mut result_set = dataset.execute_sql(query, None, sql::Dialect::DEFAULT).unwrap().unwrap();
 ///
-/// let df = df_from_layer(result_set.deref_mut(), None);
+/// let df = df_from_layer(result_set.deref_mut(), None).unwrap();
 /// println!("{}", df);
 /// ```
 pub fn df_from_layer<'l>(
@@ -295,6 +295,12 @@ mod tests {
         //println!("{}", _df);
 
         let _df = df_from_file("test_data/stations.shp", None).unwrap();
+        // println!("{}", _df);
+
+        let mut params = crate::Params::default();
+        let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
+        params.open_options = Some(&csv_parsing_options);
+        let _df = df_from_file("test_data/lat_lon_countries.csv", Some(params)).unwrap();
         // println!("{}", _df);
     }
 
