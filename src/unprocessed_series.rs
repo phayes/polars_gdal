@@ -53,7 +53,7 @@ impl UnprocessedSeries {
         let mut series = if self.nullable {
             match self.datatype {
                 UnprocessedDataType::String => {
-                    let vec: Vec<Option<String>> = self
+                    let ca: Utf8Chunked = self
                         .data
                         .into_iter()
                         .map(|v| match v {
@@ -62,7 +62,6 @@ impl UnprocessedSeries {
                             _ => unreachable!("geopadas_gdal: Unexpected non-string value `{:?}` in {}", &v, &self.name),
                         })
                         .collect();
-                    let ca: Utf8Chunked = vec.into_iter().collect();
                     ca.into_series()
                 },
                 UnprocessedDataType::Integer => {
@@ -151,7 +150,7 @@ impl UnprocessedSeries {
                     Series::from_iter(vec)
                 }
                 UnprocessedDataType::Geometry => {
-                    let vec: Vec<Vec<u8>> = self
+                    let ca: BinaryChunked = self
                         .data
                         .into_iter()
                         .map(|v| match v {
@@ -159,7 +158,6 @@ impl UnprocessedSeries {
                             _ => unreachable!("geopadas_gdal: Unexpected non-geometry value `{:?}` in {}", &v, &self.name),
                         })
                         .collect();
-                    let ca: BinaryChunked = vec.into_iter().collect();
                     ca.into_series()
                 },
                 UnprocessedDataType::Fid => {
