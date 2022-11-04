@@ -349,7 +349,7 @@ mod tests {
         let _df = df_from_file("test_data/lat_lon_countries.csv", Some(params)).unwrap();
         // println!("{}", _df);
 
-        // Try WFS
+        // Grab a WFS file from over the network. Commented out because it's slow.
         //let df = df_from_file(
         //    "WFS:https://openmaps.gov.bc.ca/geo/pub/WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=pub:WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW&sortby=OBJECTID&count=10&STARTINDEX=0",
         //    None,
@@ -363,6 +363,10 @@ mod tests {
         let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
         let _df = df_from_bytes(geojson.clone(), None, None).unwrap();
         //println!("{}", df);
+
+        let shapefile = include_bytes!("../test_data/stations_shapefile.shp.zip").to_vec();
+        let _df = df_from_bytes(shapefile, Some("stations_shapefile.shp.zip"), None).unwrap();
+        //println!("{}", _df);
     }
 
     #[test]
