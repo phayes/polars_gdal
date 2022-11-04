@@ -345,12 +345,12 @@ mod tests {
         // println!("{}", _df);
 
         // Try WFS
-        let df = df_from_file(
-            "WFS:https://openmaps.gov.bc.ca/geo/pub/WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=pub:WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW&sortby=OBJECTID&count=500&STARTINDEX=0",
-            None,
-        )
-        .unwrap();
-        println!("{}", df);
+        //let df = df_from_file(
+        //    "WFS:https://openmaps.gov.bc.ca/geo/pub/WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=pub:WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW&sortby=OBJECTID&count=10&STARTINDEX=0",
+        //    None,
+        //)
+        //.unwrap();
+        //println!("{}", df);
     }
 
     #[test]
