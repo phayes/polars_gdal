@@ -133,6 +133,24 @@ impl UnprocessedSeries {
                     let ca = DateChunked::from_naive_date_options(&self.name, vec);
                     ca.into_series()
                 }
+                UnprocessedDataType::DateTime => {
+                    let vec: Vec<Option<chrono::NaiveDateTime>> = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Value(Some(GdalValue::DateTimeValue(val))) => {
+                                Some(val.naive_utc())
+                            }
+                            GdalData::Value(None) => None,
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-date value `{:?}` in {}",
+                                &v, &self.name
+                            ),
+                        })
+                        .collect();
+                    let ca = DatetimeChunked::from_naive_datetime_options(&self.name, vec, TimeUnit::Nanoseconds);
+                    ca.into_series()
+                }
                 UnprocessedDataType::Geometry => {
                     let ca: BinaryChunked = self
                         .data
@@ -151,7 +169,7 @@ impl UnprocessedSeries {
                 UnprocessedDataType::Null => {
                     panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
                 }
-                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists and Dates", self.name),
+                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists", self.name),
             }
         } else {
             match self.datatype {
@@ -226,6 +244,25 @@ impl UnprocessedSeries {
                     let ca = DateChunked::from_naive_date(&self.name, vec);
                     ca.into_series()
                 }
+                UnprocessedDataType::DateTime => {
+                    let vec: Vec<chrono::NaiveDateTime> = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Value(Some(GdalValue::DateTimeValue(val))) => val.naive_utc(),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-date value `{:?}` in {}",
+                                &v, &self.name
+                            ),
+                        })
+                        .collect();
+                    let ca = DatetimeChunked::from_naive_datetime(
+                        &self.name,
+                        vec,
+                        TimeUnit::Nanoseconds,
+                    );
+                    ca.into_series()
+                }
                 UnprocessedDataType::Geometry => {
                     let ca: BinaryChunked = self
                         .data
@@ -257,7 +294,10 @@ impl UnprocessedSeries {
                 UnprocessedDataType::Null => {
                     panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
                 }
-                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists and Dates", self.name),
+                _ => unimplemented!(
+                    "geopandas_gdal: Error processing {} - Still need to implement Lists",
+                    self.name
+                ),
             }
         };
 
