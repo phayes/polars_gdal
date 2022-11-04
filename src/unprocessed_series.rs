@@ -5,7 +5,9 @@ use polars::prelude::*;
 pub(crate) enum GdalData {
     Value(Option<gdal::vector::FieldValue>),
     Geometry(Vec<u8>),
+    Fid(u64),
 }
+
 #[derive(Debug)]
 pub(crate) enum UnprocessedDataType {
     Integer,
@@ -20,6 +22,7 @@ pub(crate) enum UnprocessedDataType {
     DateTime,
     Null,
     Geometry,
+    Fid,
 }
 
 pub(crate) fn gdal_type_to_unprocessed_type(gdal_type: &Option<gdal::vector::FieldValue>) -> UnprocessedDataType {
@@ -35,23 +38,6 @@ pub(crate) fn gdal_type_to_unprocessed_type(gdal_type: &Option<gdal::vector::Fie
         Some(gdal::vector::FieldValue::DateValue(_)) => UnprocessedDataType::Date,
         Some(gdal::vector::FieldValue::DateTimeValue(_)) => UnprocessedDataType::DateTime,
         None => UnprocessedDataType::Null,
-    }
-}
-
-pub(crate) fn unprocessed_type_to_polars_type(Unprocessed_type: UnprocessedDataType) -> DataType {
-    match Unprocessed_type {
-        UnprocessedDataType::Integer => DataType::Int32,
-        UnprocessedDataType::IntegerList => DataType::List(Box::new(DataType::Int32)),
-        UnprocessedDataType::Integer64 => DataType::Int64,
-        UnprocessedDataType::Integer64List => DataType::List(Box::new(DataType::Int64)),
-        UnprocessedDataType::String => DataType::Utf8,
-        UnprocessedDataType::StringList => DataType::List(Box::new(DataType::Utf8)),
-        UnprocessedDataType::Real => DataType::Float64,
-        UnprocessedDataType::RealList => DataType::List(Box::new(DataType::Float64)),
-        UnprocessedDataType::Date => DataType::Date,
-        UnprocessedDataType::DateTime => DataType::Datetime(TimeUnit::Nanoseconds, None),
-        UnprocessedDataType::Geometry => DataType::Binary,
-        UnprocessedDataType::Null => DataType::Null,
     }
 }
 
@@ -175,6 +161,17 @@ impl UnprocessedSeries {
                         .collect();
                     let ca: BinaryChunked = vec.into_iter().collect();
                     ca.into_series()
+                },
+                UnprocessedDataType::Fid => {
+                    let vec: Vec<u64> = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Fid(val) => val,
+                            _ => unreachable!("geopadas_gdal: Unexpected non-u64 fid value `{:?}` in {}", &v, &self.name),
+                        })
+                        .collect();
+                    Series::from_iter(vec)
                 },
                 UnprocessedDataType::Null => panic!("geopandas_gdal: Unexpected null value in {}", &self.name),
                 _ => unimplemented!("geopandas_gdal: Still need to implement Lists and Dates"),

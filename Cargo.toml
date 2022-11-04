@@ -9,3 +9,4 @@ edition = "2021"
 gdal = "0.13"
 geopolars = "0.1.0-alpha.3"
 polars = { vesrion = "0.25", features = ["dtype-binary"] }
+thiserror = { version = "1" }
