@@ -78,11 +78,11 @@ pub struct Params<'a> {
 
 impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
     fn into(self) -> gdal::DatasetOptions<'a> {
-        gdal::DatasetOptions { 
-            open_flags: self.open_flags, 
-            allowed_drivers: self.allowed_drivers, 
-            open_options: self.open_options, 
-            sibling_files: self.sibling_files
+        gdal::DatasetOptions {
+            open_flags: self.open_flags,
+            allowed_drivers: self.allowed_drivers,
+            open_options: self.open_options,
+            sibling_files: self.sibling_files,
         }
     }
 }
@@ -92,13 +92,13 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// Formats supported include GeoJSON, Shapefile, GPKG, and others.
 /// See [https://gdal.org/drivers/vector/index.html](https://gdal.org/drivers/vector/index.html) for a full list of supported formats.
 /// Some formats require additional libraries to be installed.
-/// 
+///
 /// If using a dataformat that doesn't support named layers (eg GeoJSON) the default layer name will be 'layer'
 ///
 /// # Example
 /// ``` # ignore
 /// use geopolars_gdal::df_from_bytes;
-/// 
+///
 /// let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
 /// let df = df_from_bytes(geojson, None).unwrap();
 /// println!("{}", df);
@@ -143,10 +143,7 @@ pub fn df_from_bytes(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame
 /// ```
 ///
 /// TODO: Support zipped, tared and gziped data.
-pub fn df_from_file<P: AsRef<Path>>(
-    path: P,
-    params: Option<Params>,
-) -> Result<DataFrame, Error> {
+pub fn df_from_file<P: AsRef<Path>>(path: P, params: Option<Params>) -> Result<DataFrame, Error> {
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
 
@@ -191,6 +188,8 @@ pub fn df_from_layer<'l>(
     let fid_column_name = params.fid_column_name.unwrap_or("fid");
     let geometry_column_name = params.geometry_column_name.unwrap_or("geometry");
 
+    let mut numkeys = 0;
+
     let mut unprocessed_series_map = HashMap::new();
 
     for (idx, feature) in &mut layer.features().enumerate() {
@@ -210,9 +209,10 @@ pub fn df_from_layer<'l>(
             }
         }
 
+        // Process FID
         if !fid_column_name.is_empty() {
             if let Some(fid) = feature.fid() {
-                let entry = unprocessed_series_map
+                let fid_entry = unprocessed_series_map
                     .entry(fid_column_name.to_owned())
                     .or_insert_with(|| UnprocessedSeries {
                         name: fid_column_name.to_owned(),
@@ -220,36 +220,12 @@ pub fn df_from_layer<'l>(
                         datatype: UnprocessedDataType::Fid,
                         data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
                     });
-                entry.data.push(GdalData::Fid(fid));
+                fid_entry.data.push(GdalData::Fid(fid));
             }
         }
 
-        for (idx, (name, value)) in feature.fields().enumerate() {
-            if idx == 0 && name == geometry_column_name {
-                return Err(Error::GeometryColumnCollision(
-                    geometry_column_name.to_string(),
-                ));
-            }
-            if idx == 0 && name == fid_column_name {
-                return Err(Error::FidColumnCollision(fid_column_name.to_string()));
-            }
-            let entry = unprocessed_series_map
-                .entry(name.clone())
-                .or_insert_with(|| UnprocessedSeries {
-                    name: name.clone(),
-                    nullable: false,
-                    datatype: gdal_type_to_unprocessed_type(&value),
-                    data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
-                });
-
-            if value.is_none() && !entry.nullable {
-                entry.nullable = true;
-            }
-
-            entry.data.push(GdalData::Value(value));
-        }
-
-        let entry = unprocessed_series_map
+        // Process Geometry
+        let geom_entry = unprocessed_series_map
             .entry(geometry_column_name.to_owned())
             .or_insert_with(|| UnprocessedSeries {
                 name: geometry_column_name.to_owned(),
@@ -258,8 +234,68 @@ pub fn df_from_layer<'l>(
                 data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
             });
 
-        let wkb = feature.geometry().wkb()?;
-        entry.data.push(GdalData::Geometry(wkb));
+        let geometry = feature.geometry();
+        if geometry.is_empty() {
+            geom_entry.data.push(GdalData::Value(None));
+        }
+        else {
+            let wkb = feature.geometry().wkb()?;
+            geom_entry.data.push(GdalData::Geometry(wkb));
+        }
+
+        // Process all data fields
+        let mut field_count = 0;
+        for (name, value) in feature.fields() {
+            if name == geometry_column_name {
+                return Err(Error::GeometryColumnCollision(
+                    geometry_column_name.to_string(),
+                ));
+            }
+            if name == fid_column_name {
+                return Err(Error::FidColumnCollision(fid_column_name.to_string()));
+            }
+
+            let entry = unprocessed_series_map
+                .entry(name.clone())
+                .or_insert_with(|| {
+                    let mut series = UnprocessedSeries {
+                        name: name.clone(),
+                        nullable: false,
+                        datatype: gdal_type_to_unprocessed_type(&value),
+                        data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
+                    };
+
+                    // Fill data with nulls for past features
+                    if idx != 0 {
+                        for _ in 0..idx {
+                            series.data.push(GdalData::Value(None));
+                        }
+                        series.nullable = true;
+                    }
+                    numkeys += 1;
+                    series
+                });
+
+            if value.is_none() && !entry.nullable {
+                entry.nullable = true;
+            }
+
+            entry.data.push(GdalData::Value(value));
+            field_count += 1;
+        }
+
+        // If field_count doesn't match the keyset length, top up any missing fields with nulls
+        if field_count != numkeys {
+            for entry in unprocessed_series_map.values_mut() {
+                if entry.data.len() < idx + 1 {
+                    entry.data.push(GdalData::Value(None));
+
+                    if !entry.nullable {
+                        entry.nullable = true;
+                    }
+                }
+            }
+        }
     }
 
     // Process the HashMap into a Vec of Series
@@ -298,10 +334,23 @@ mod tests {
         // println!("{}", _df);
 
         let mut params = crate::Params::default();
-        let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
+        let csv_parsing_options = [
+            "EMPTY_STRING_AS_NULL=YES",
+            "KEEP_GEOM_COLUMNS=NO",
+            "X_POSSIBLE_NAMES=Lon*",
+            "Y_POSSIBLE_NAMES=Lat*",
+        ];
         params.open_options = Some(&csv_parsing_options);
         let _df = df_from_file("test_data/lat_lon_countries.csv", Some(params)).unwrap();
         // println!("{}", _df);
+
+        // Try WFS
+        let df = df_from_file(
+            "WFS:https://openmaps.gov.bc.ca/geo/pub/WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=pub:WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW&sortby=OBJECTID&count=500&STARTINDEX=0",
+            None,
+        )
+        .unwrap();
+        println!("{}", df);
     }
 
     #[test]

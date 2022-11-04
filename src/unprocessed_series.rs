@@ -1,4 +1,5 @@
 use gdal::vector::FieldValue as GdalValue;
+use polars::export::chrono;
 use polars::prelude::*;
 
 #[derive(Debug)]
@@ -25,7 +26,9 @@ pub(crate) enum UnprocessedDataType {
     Fid,
 }
 
-pub(crate) fn gdal_type_to_unprocessed_type(gdal_type: &Option<gdal::vector::FieldValue>) -> UnprocessedDataType {
+pub(crate) fn gdal_type_to_unprocessed_type(
+    gdal_type: &Option<gdal::vector::FieldValue>,
+) -> UnprocessedDataType {
     match gdal_type {
         Some(gdal::vector::FieldValue::IntegerValue(_)) => UnprocessedDataType::Integer,
         Some(gdal::vector::FieldValue::IntegerListValue(_)) => UnprocessedDataType::IntegerList,
@@ -59,11 +62,14 @@ impl UnprocessedSeries {
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::StringValue(val))) => Some(val),
                             GdalData::Value(None) => None,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-string value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-string value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     ca.into_series()
-                },
+                }
                 UnprocessedDataType::Integer => {
                     let vec: Vec<Option<i32>> = self
                         .data
@@ -71,7 +77,10 @@ impl UnprocessedSeries {
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::IntegerValue(val))) => Some(val),
                             GdalData::Value(None) => None,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-i32 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-i32 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
@@ -83,7 +92,10 @@ impl UnprocessedSeries {
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::Integer64Value(val))) => Some(val),
                             GdalData::Value(None) => None,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-i64 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-i64 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
@@ -95,13 +107,51 @@ impl UnprocessedSeries {
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::RealValue(val))) => Some(val),
                             GdalData::Value(None) => None,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-f64 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-f64 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
                 }
-                UnprocessedDataType::Null => panic!("geopandas_gdal: Unexpected null value in {}", &self.name),
-                _ => unimplemented!("geopandas_gdal: Still need to implement Lists and Dates"),
+                UnprocessedDataType::Date => {
+                    let vec: Vec<Option<chrono::NaiveDate>> = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Value(Some(GdalValue::DateValue(val))) => {
+                                Some(val.naive_utc())
+                            }
+                            GdalData::Value(None) => None,
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-date value `{:?}` in {}",
+                                &v, &self.name
+                            ),
+                        })
+                        .collect();
+                    let ca = DateChunked::from_naive_date_options(&self.name, vec);
+                    ca.into_series()
+                }
+                UnprocessedDataType::Geometry => {
+                    let ca: BinaryChunked = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Geometry(val) => Some(val),
+                            GdalData::Value(None) => None,
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-geometry value `{:?}` in {}",
+                                &v, &self.name
+                            ),
+                        })
+                        .collect();
+                    ca.into_series()
+                }
+                UnprocessedDataType::Null => {
+                    panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
+                }
+                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists and Dates", self.name),
             }
         } else {
             match self.datatype {
@@ -111,7 +161,10 @@ impl UnprocessedSeries {
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::StringValue(val))) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-string value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-string value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
@@ -122,7 +175,10 @@ impl UnprocessedSeries {
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::IntegerValue(val))) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-i32 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-i32 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
@@ -133,7 +189,10 @@ impl UnprocessedSeries {
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::Integer64Value(val))) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-i64 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-i64 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
@@ -144,10 +203,28 @@ impl UnprocessedSeries {
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Value(Some(GdalValue::RealValue(val))) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-f64 value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-f64 value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
+                }
+                UnprocessedDataType::Date => {
+                    let vec: Vec<chrono::NaiveDate> = self
+                        .data
+                        .into_iter()
+                        .map(|v| match v {
+                            GdalData::Value(Some(GdalValue::DateValue(val))) => val.naive_utc(),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-date value `{:?}` in {}",
+                                &v, &self.name
+                            ),
+                        })
+                        .collect();
+                    let ca = DateChunked::from_naive_date(&self.name, vec);
+                    ca.into_series()
                 }
                 UnprocessedDataType::Geometry => {
                     let ca: BinaryChunked = self
@@ -155,24 +232,32 @@ impl UnprocessedSeries {
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Geometry(val) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-geometry value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-geometry value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     ca.into_series()
-                },
+                }
                 UnprocessedDataType::Fid => {
                     let vec: Vec<u64> = self
                         .data
                         .into_iter()
                         .map(|v| match v {
                             GdalData::Fid(val) => val,
-                            _ => unreachable!("geopadas_gdal: Unexpected non-u64 fid value `{:?}` in {}", &v, &self.name),
+                            _ => unreachable!(
+                                "geopadas_gdal: Unexpected non-u64 fid value `{:?}` in {}",
+                                &v, &self.name
+                            ),
                         })
                         .collect();
                     Series::from_iter(vec)
-                },
-                UnprocessedDataType::Null => panic!("geopandas_gdal: Unexpected null value in {}", &self.name),
-                _ => unimplemented!("geopandas_gdal: Still need to implement Lists and Dates"),
+                }
+                UnprocessedDataType::Null => {
+                    panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
+                }
+                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists and Dates", self.name),
             }
         };
 
