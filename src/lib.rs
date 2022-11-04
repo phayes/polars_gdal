@@ -18,6 +18,7 @@ use unprocessed_series::*;
 /// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
 pub struct Params<'a> {
+
     /// GDal bitflags used by [`Dataset::open_ex`]. Flags are combined with a bitwise OR `|`.
     ///
     /// # Example
@@ -93,7 +94,8 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// See [https://gdal.org/drivers/vector/index.html](https://gdal.org/drivers/vector/index.html) for a full list of supported formats.
 /// Some formats require additional libraries to be installed.
 ///
-/// If using a dataformat that doesn't support named layers (eg GeoJSON) the default layer name will be 'layer'
+/// Adding a filename hint can be very helpful in allowing GDAL to properly parse the datastream.
+/// For example, zipped shapefiles can't be parsed without a filename hint in the form of "filename.shp.zip".
 ///
 /// # Example
 /// ``` # ignore
@@ -105,15 +107,18 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// ```
 ///
 /// TODO: Support zipped, tared and gziped data.
-pub fn df_from_bytes(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, Error> {
+pub fn df_from_bytes(bytes: Vec<u8>, filename_hint: Option<&str>, params: Option<Params>) -> Result<DataFrame, Error> {
     static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
 
+    let filename_hint = filename_hint.unwrap_or("layer");
+    
     let input_mem_path = format!(
-        "/vsimem/geopolars_gdal/{}/{}/layer",
+        "/vsimem/geopolars_gdal/{}/{}/{}",
         std::process::id(),
-        MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst)
+        MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
+        filename_hint
     );
     gdal::vsi::create_mem_file(&input_mem_path, bytes)?;
 
@@ -356,7 +361,7 @@ mod tests {
     #[test]
     fn test_df_from_bytes() {
         let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
-        let _df = df_from_bytes(geojson.clone(), None).unwrap();
+        let _df = df_from_bytes(geojson.clone(), None, None).unwrap();
         //println!("{}", df);
     }
 
