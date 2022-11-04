@@ -1,5 +1,3 @@
-# geopolars_gdal
-
 Read and write GDAL compatible file-formats into polars / geopolars.
 
 Supports reading the following file-formats into GeoPolars:
@@ -13,14 +11,14 @@ Supports reading the following file-formats into GeoPolars:
 8. ... and [many more](https://gdal.org/drivers/vector/index.html)
 
 
-# Example 1: Dataframe from a file
+### Example 1: Dataframe from a file
 ```rust
 use geopolars_gdal::df_from_file;
 let df = df_from_file("my_shapefile.shp", None).unwrap();
 println!("{}", df);
 ```
 
-# Example 2: DataFrame from raw bytes
+### Example 2: DataFrame from raw bytes
 ```rust
 use geopolars_gdal::df_from_bytes;
 
@@ -30,7 +28,7 @@ let df = df_from_bytes(geojson, None).unwrap();
 println!("{}", df);
 ```
 
-# Example 3: Dataframe from GDAL Layer with filtering query
+### Example 3: Dataframe from GDAL Layer with filtering query
 ```rust
 use geopolars_gdal::{df_from_layer, glal};
 use gdal::vector::sql;
