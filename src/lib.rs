@@ -105,8 +105,6 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// let df = df_from_bytes(geojson, None).unwrap();
 /// println!("{}", df);
 /// ```
-///
-/// TODO: Support zipped, tared and gziped data.
 pub fn df_from_bytes(bytes: Vec<u8>, filename_hint: Option<&str>, params: Option<Params>) -> Result<DataFrame, Error> {
     static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let params = params.unwrap_or_default();
@@ -146,8 +144,6 @@ pub fn df_from_bytes(bytes: Vec<u8>, filename_hint: Option<&str>, params: Option
 /// let df = df_from_file("my_shapefile.shp", None).unwrap();
 /// println!("{}", df);
 /// ```
-///
-/// TODO: Support zipped, tared and gziped data.
 pub fn df_from_file<P: AsRef<Path>>(path: P, params: Option<Params>) -> Result<DataFrame, Error> {
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
@@ -362,7 +358,7 @@ mod tests {
     fn test_df_from_bytes() {
         let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
         let _df = df_from_bytes(geojson.clone(), None, None).unwrap();
-        //println!("{}", df);
+        //println!("{}", _df);
 
         let shapefile = include_bytes!("../test_data/stations_shapefile.shp.zip").to_vec();
         let _df = df_from_bytes(shapefile, Some("stations_shapefile.shp.zip"), None).unwrap();
