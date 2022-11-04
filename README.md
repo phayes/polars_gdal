@@ -1,4 +1,4 @@
-Read GDAL compatible file-formats into [Polars](https://www.pola.rs) and [GeoPolars](https://github.com/geopolars/geopolars).
+Read GDAL-compatible geospatial data into [Polars](https://www.pola.rs) and [GeoPolars](https://github.com/geopolars/geopolars).
 
 Supports reading the following geospatial formats into a Polars Dataframe:
 
