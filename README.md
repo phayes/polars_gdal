@@ -1,4 +1,4 @@
-Read and write GDAL compatible file-formats into polars / geopolars.
+Read GDAL compatible file-formats into polars / geopolars.
 
 Supports reading the following file-formats into GeoPolars:
 
