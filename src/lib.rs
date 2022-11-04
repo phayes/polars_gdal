@@ -8,8 +8,6 @@ use gdal::vector::LayerAccess;
 use gdal::Dataset;
 use polars::prelude::*;
 use std::collections::HashMap;
-use std::ops::Deref;
-use std::ops::DerefMut;
 use std::path::Path;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
@@ -87,22 +85,6 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
     }
 }
 
-struct LayerWrap<'a>(gdal::vector::Layer<'a>);
-
-impl<'a> Deref for LayerWrap<'a> {
-    type Target = gdal::vector::Layer<'a>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl<'a> DerefMut for LayerWrap<'a> {
-    fn deref_mut(&mut self) -> &mut <Self as Deref>::Target {
-        &mut self.0
-    }
-}
-
 /// Given some raw bytes, create a dataframe.
 ///
 /// Formats supported include GeoJSON, Shapefile, GPKG, and others.
@@ -134,7 +116,7 @@ pub fn bytes_to_df(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, 
     gdal::vsi::create_mem_file(&input_mem_path, bytes)?;
 
     let dataset = gdal::Dataset::open_ex(&input_mem_path, gdal_options)?;
-    let layer = if let Some(layer_name) = params.layer_name {
+    let mut layer = if let Some(layer_name) = params.layer_name {
         dataset.layer_by_name(layer_name)?
     } else if let Some(layer_index) = params.layer_index {
         dataset.layer(layer_index as isize)?
@@ -142,9 +124,7 @@ pub fn bytes_to_df(bytes: Vec<u8>, params: Option<Params>) -> Result<DataFrame, 
         dataset.layer(0)?
     };
 
-    let mut wrap = LayerWrap(layer);
-
-    layer_to_df(wrap.deref_mut(), Some(params))
+    layer_to_df(&mut layer, Some(params))
 }
 
 /// Given a filepath, create a dataframe from that file.
@@ -170,7 +150,7 @@ pub fn file_to_df<P: AsRef<Path>>(
 
     let dataset = Dataset::open_ex(path, gdal_options)?;
 
-    let layer = if let Some(layer_name) = params.layer_name {
+    let mut layer = if let Some(layer_name) = params.layer_name {
         dataset.layer_by_name(layer_name)?
     } else if let Some(layer_index) = params.layer_index {
         dataset.layer(layer_index as isize)?
@@ -178,9 +158,7 @@ pub fn file_to_df<P: AsRef<Path>>(
         dataset.layer(0)?
     };
 
-    let mut wrap = LayerWrap(layer);
-
-    layer_to_df(wrap.deref_mut(), Some(params))
+    layer_to_df(&mut layer, Some(params))
 }
 
 /// Given a GDAL layer, create a dataframe.
@@ -339,7 +317,7 @@ mod tests {
             .unwrap()
             .unwrap();
 
-        let _df = layer_to_df(result_set.deref_mut(), None).unwrap();
+        let _df = layer_to_df(&mut result_set, None).unwrap();
         //println!("{}", _df);
     }
 }
