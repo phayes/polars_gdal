@@ -55,7 +55,9 @@ println!("{}", df);
 
 ### Example 5: Dataframe from a PostGIS table
 ```rust # ignore
-let mut params = geopolars_gdal::Params::default();
+use geopolars_gdal::{df_from_file, Params};
+
+let mut params = Params::default();
 params.layer_name = Some("some_table_name");
  
 let df = df_from_file("postgresql://user:pass@host/db_name", Some(params)).unwrap();
