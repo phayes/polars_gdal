@@ -7,7 +7,8 @@ Supports reading the following geospatial formats into a Polars Dataframe:
 3. CSV with lat / lon
 4. FlatGeobuf
 5. GeoRSS
-6. ... and [many more](https://gdal.org/drivers/vector/index.html)
+6. GPX
+7. ... and [many more](https://gdal.org/drivers/vector/index.html)
 
 
 ### Example 1: Dataframe from a file
