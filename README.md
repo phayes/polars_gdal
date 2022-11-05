@@ -52,3 +52,13 @@ params.open_options = Some(&csv_parsing_options);
 let df = df_from_file("lat_lon_countries.csv", Some(params)).unwrap();
 println!("{}", df);
 ```
+
+### Example 5: Dataframe from a PostGIS table
+```rust # ignore
+let mut params = geopolars_gdal::Params::default();
+params.layer_name = Some("some_table_name");
+ 
+let df = df_from_file("postgresql://user:pass@host/db_name", Some(params)).unwrap();
+println!("{}", df);
+```
+
