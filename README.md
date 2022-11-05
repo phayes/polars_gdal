@@ -8,7 +8,7 @@ Supports reading the following geospatial formats into a Polars Dataframe:
 4. FlatGeobuf
 5. GeoRSS
 6. GPX
-7. PostGIS
+7. PostGIS (via network)
 8. SpatialLite
 9. ... and [many more](https://gdal.org/drivers/vector/index.html)
 
