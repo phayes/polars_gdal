@@ -15,8 +15,8 @@ Supports reading the following geospatial formats into a Polars Dataframe:
 
 ### Example 1: Dataframe from a file
 ```rust # ignore
-use geopolars_gdal::df_from_file;
-let df = df_from_file("my_shapefile.shp", None).unwrap();
+use geopolars_gdal::df_from_resource;
+let df = df_from_resource("my_shapefile.shp", None).unwrap();
 println!("{}", df);
 ```
 
@@ -49,18 +49,17 @@ let mut params = geopolars_gdal::Params::default();
 let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
 params.open_options = Some(&csv_parsing_options);
  
-let df = df_from_file("lat_lon_countries.csv", Some(params)).unwrap();
+let df = df_from_resource("lat_lon_countries.csv", Some(params)).unwrap();
 println!("{}", df);
 ```
 
 ### Example 5: Dataframe from a PostGIS table
 ```rust # ignore
-use geopolars_gdal::{df_from_file, Params};
+use geopolars_gdal::{df_from_resource, Params};
 
 let mut params = Params::default();
 params.layer_name = Some("some_table_name");
  
-let df = df_from_file("postgresql://user:pass@host/db_name", Some(params)).unwrap();
+let df = df_from_resource("postgresql://user:pass@host/db_name", Some(params)).unwrap();
 println!("{}", df);
 ```
-

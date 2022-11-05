@@ -18,7 +18,6 @@ use unprocessed_series::*;
 /// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
 pub struct Params<'a> {
-
     /// GDal bitflags used by [`Dataset::open_ex`]. Flags are combined with a bitwise OR `|`.
     ///
     /// # Example
@@ -105,13 +104,17 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// let df = df_from_bytes(geojson, None).unwrap();
 /// println!("{}", df);
 /// ```
-pub fn df_from_bytes(bytes: Vec<u8>, filename_hint: Option<&str>, params: Option<Params>) -> Result<DataFrame, Error> {
+pub fn df_from_bytes(
+    bytes: Vec<u8>,
+    filename_hint: Option<&str>,
+    params: Option<Params>,
+) -> Result<DataFrame, Error> {
     static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
 
     let filename_hint = filename_hint.unwrap_or("layer");
-    
+
     let input_mem_path = format!(
         "/vsimem/geopolars_gdal/{}/{}/{}",
         std::process::id(),
@@ -132,19 +135,40 @@ pub fn df_from_bytes(bytes: Vec<u8>, filename_hint: Option<&str>, params: Option
     df_from_layer(&mut layer, Some(params))
 }
 
-/// Given a filepath, create a dataframe from that file.
+/// Given a filepath or a URI, read the resource into a dataframe.
+/// 
+/// The simplest resource is a file on the local filesystem, in which case we would simply pass in a filepath.
+/// Fetching resources over http(s) is supported using a URL.
+/// Connecting to PostGIS is supported using a `postgres://user:pass@host/dbname` URI in combination with setting `Params::layer_name` to the name of the table.
 ///
-/// Formats supported include GeoJSON, Shapefile, GPKG, and others.
+/// Formats supported include GeoJSON, Shapefile, SpatialLite database, KML, and others.
 /// See [https://gdal.org/drivers/vector/index.html](https://gdal.org/drivers/vector/index.html) for a full list of supported formats.
 /// Some formats require additional libraries to be installed.
 ///
-/// # Example
+/// # Local file example
 /// ``` # ignore
-/// use geopolars_gdal::df_from_file;
-/// let df = df_from_file("my_shapefile.shp", None).unwrap();
+/// use geopolars_gdal::df_from_resource;
+/// let df = df_from_resource("my_shapefile.shp", None).unwrap();
 /// println!("{}", df);
 /// ```
-pub fn df_from_file<P: AsRef<Path>>(path: P, params: Option<Params>) -> Result<DataFrame, Error> {
+/// 
+/// # Remote file example
+/// ``` # ignore
+/// use geopolars_gdal::df_from_resource;
+/// let df = df_from_resource("https://raw.githubusercontent.com/ebrelsford/geojson-examples/master/queens.geojson", None).unwrap();
+/// println!("{}", df);
+/// ```
+/// 
+/// # PostGIS example
+/// ``` # ignore
+/// use geopolars_gdal::{df_from_resource, Params};
+/// 
+/// let mut params = crate::Params::default();
+/// params.layer_name = Some("some_table_name");
+/// let df = df_from_resource("postgresql://user:pass@hostname/dbname", Some(params)).unwrap();
+/// println!("{}", df);
+/// ```
+pub fn df_from_resource<P: AsRef<Path>>(path: P, params: Option<Params>) -> Result<DataFrame, Error> {
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
 
@@ -238,8 +262,7 @@ pub fn df_from_layer<'l>(
         let geometry = feature.geometry();
         if geometry.is_empty() {
             geom_entry.data.push(GdalData::Value(None));
-        }
-        else {
+        } else {
             let wkb = feature.geometry().wkb()?;
             geom_entry.data.push(GdalData::Geometry(wkb));
         }
@@ -332,24 +355,28 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_df_from_file() {
-        let _df = df_from_file(
+    fn test_df_from_resource() {
+        // Test GeoJSON
+        let _df = df_from_resource(
             "test_data/us_states.feature_collection.implicit_4326.json",
             None,
         )
         .unwrap();
         //println!("{}", _df);
 
-        let _df = df_from_file(
+        // Test GeoJSON
+        let _df = df_from_resource(
             "test_data/global_large_lakes.feature_collection.implicit_4326.json",
             None,
         )
         .unwrap();
         //println!("{}", _df);
 
-        let _df = df_from_file("test_data/stations.shp", None).unwrap();
+        // Test Shapefile
+        let _df = df_from_resource("test_data/stations.shp", None).unwrap();
         // println!("{}", _df);
 
+        // Test CSV with options
         let mut params = crate::Params::default();
         let csv_parsing_options = [
             "EMPTY_STRING_AS_NULL=YES",
@@ -358,16 +385,12 @@ mod tests {
             "Y_POSSIBLE_NAMES=Lat*",
         ];
         params.open_options = Some(&csv_parsing_options);
-        let _df = df_from_file("test_data/lat_lon_countries.csv", Some(params)).unwrap();
+        let _df = df_from_resource("test_data/lat_lon_countries.csv", Some(params)).unwrap();
         // println!("{}", _df);
 
-        // Grab a WFS file from over the network. Commented out because it's slow.
-        //let df = df_from_file(
-        //    "WFS:https://openmaps.gov.bc.ca/geo/pub/WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW/ows?service=WFS&request=GetFeature&version=2.0.0&typeName=pub:WHSE_FOREST_TENURE.FTEN_RECREATION_POLY_SVW&sortby=OBJECTID&count=10&STARTINDEX=0",
-        //    None,
-        //)
-        //.unwrap();
-        //println!("{}", df);
+        // Test SpatialLite
+        let _df = df_from_resource("test_data/test_spatialite.sqlite", None).unwrap();
+        // println!("{}", _df);
     }
 
     #[test]
@@ -397,5 +420,29 @@ mod tests {
 
         let _df = df_from_layer(&mut result_set, None).unwrap();
         //println!("{}", _df);
+    }
+
+    #[allow(dead_code)]
+    fn test_postgis() {
+        let mut params = crate::Params::default();
+        params.layer_name = Some("parcel_polygon");
+        params.truncating_limit = Some(100);
+
+        let df = df_from_resource(
+            "postgresql://postgres:postgres@localhost/carbon",
+            Some(params),
+        )
+        .unwrap();
+        println!("{}", df);
+    }
+
+    #[allow(dead_code)]
+    fn test_https() {
+        let df = df_from_resource(
+            "https://raw.githubusercontent.com/ebrelsford/geojson-examples/master/queens.geojson",
+            None,
+        )
+        .unwrap();
+        println!("{}", df);   
     }
 }
