@@ -285,7 +285,7 @@ pub fn df_from_layer<'l>(
             field_count += 1;
         }
 
-        // If field_count doesn't match the keyset length, top up any missing fields with nulls
+        // If field_count doesn't match numkeys, top up any missing fields with nulls
         if field_count != numkeys {
             for entry in unprocessed_series_map.values_mut() {
                 if entry.data.len() < idx + 1 {
@@ -301,11 +301,27 @@ pub fn df_from_layer<'l>(
 
     // Process the HashMap into a Vec of Series
     let mut series_vec = Vec::with_capacity(unprocessed_series_map.len());
+
+    // Process the Feature ID first
+    if !fid_column_name.is_empty() {
+        if let Some(fid_series) = unprocessed_series_map.remove(fid_column_name) {
+            series_vec.push(fid_series.process());
+        }
+    }
+
+    // Save the geometry column for last
+    let geometry_series = unprocessed_series_map.remove(geometry_column_name);
+
     for (_, unprocessed_series) in unprocessed_series_map {
         if let UnprocessedDataType::Null = unprocessed_series.datatype {
             continue;
         }
         series_vec.push(unprocessed_series.process());
+    }
+
+    // Add the geometry column last
+    if let Some(geometry_series) = geometry_series {
+        series_vec.push(geometry_series.process());
     }
 
     Ok(DataFrame::new(series_vec)?)
