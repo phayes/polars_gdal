@@ -6,7 +6,7 @@ Supports reading the following geospatial formats into a Polars Dataframe:
 2. ShapeFiles
 3. CSV with lat / lon
 4. FlatGeobuf
-5. GeoRSS
+5. KML
 6. GPX
 7. PostGIS (via network)
 8. SpatialLite
