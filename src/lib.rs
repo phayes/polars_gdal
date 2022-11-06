@@ -15,6 +15,7 @@ use std::path::Path;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use unprocessed_series::*;
+use gdal::vector::FieldValue;
 
 /// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
@@ -58,13 +59,16 @@ pub struct Params<'a> {
     /// This has no effect is `layer_name` is set.
     pub layer_index: Option<usize>,
 
-    /// The Feature ID column name. By default `fid` will be used. A empty string can be set to disable reading the feature id.
+    /// The Feature ID column name. By default, the feature-id column is not included.
     pub fid_column_name: Option<&'a str>,
 
     /// The Geometry colum name. By default `geomery` will be used.
     ///
     /// Changing this is not recommended since the `geopolars` crates assumes geometries will be stored in the `geometry` column.
     pub geometry_column_name: Option<&'a str>,
+
+    /// The Geometry format to use, defaults to WKB. In the future, this will default to GeoArrow format.
+    pub geometry_format: GeometryFormat,
 
     /// Stop reading after this many features. If None, all features will be read.
     pub truncating_limit: Option<usize>,
@@ -83,6 +87,37 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
             allowed_drivers: self.allowed_drivers,
             open_options: self.open_options,
             sibling_files: self.sibling_files,
+        }
+    }
+}
+
+/// The geometry format to use when writing to the dataframe.
+///
+/// Defaults to WKB, in the future this default will change to GeoArrow format
+#[derive(Debug, Clone, Copy)]
+pub enum GeometryFormat {
+    /// Write the geometry as WKB (Well Known Binary) format.
+    WKB,
+
+    /// Write the geometry as GeoJSON format.
+    GeoJson,
+
+    /// Write the geometry as GeoJSON format.
+    WKT,
+}
+
+impl Default for GeometryFormat {
+    fn default() -> Self {
+        Self::WKB
+    }
+}
+
+impl Into<UnprocessedDataType> for GeometryFormat {
+    fn into(self) -> UnprocessedDataType {
+        match self {
+            Self::WKB => UnprocessedDataType::GeometryWKB,
+            Self::GeoJson => UnprocessedDataType::String,
+            Self::WKT => UnprocessedDataType::String,
         }
     }
 }
@@ -138,10 +173,14 @@ pub fn df_from_bytes(
     if data.is_empty() {
         return Err(Error::EmptyData);
     }
-    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_READONLY != gdal::GdalOpenFlags::GDAL_OF_READONLY {
+    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_READONLY
+        != gdal::GdalOpenFlags::GDAL_OF_READONLY
+    {
         return Err(Error::ReadonlyMustSet);
     }
-    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_UPDATE == gdal::GdalOpenFlags::GDAL_OF_UPDATE {
+    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_UPDATE
+        == gdal::GdalOpenFlags::GDAL_OF_UPDATE
+    {
         return Err(Error::UpdateNotSupported);
     }
 
@@ -153,10 +192,10 @@ pub fn df_from_bytes(
         MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
         filename_hint
     );
-    
+
     // Call into the C function VSIFileFromMemBuffer
-    // SAFETY: VSIFileFromMemBuffer accepts a pointed to mutable data because in other circumstances it can be used to write data. 
-    //         However, we're ensuring that it's only opened in read-only mode, which allows us to safely coerse a immutable &[u8] to a *mut u8.
+    // SAFETY: VSIFileFromMemBuffer accepts a pointer to mutable data because in other circumstances it can be used to write data.
+    //         However, we're ensuring that it's only opened in read-only mode, which allows us to safely coerce a immutable &[u8] to a *mut u8.
     let path = CString::new(input_mem_path.as_bytes()).unwrap();
     let ptr = data.as_ptr() as *mut u8;
     let handle =
@@ -165,7 +204,7 @@ pub fn df_from_bytes(
         return Err(_last_null_pointer_err("VSIGetMemFileBuffer").into());
     }
 
-    // Load the dataset from the VSI file handler
+    // Load the dataset and layer from the VSI file handler
     let dataset = gdal::Dataset::open_ex(&input_mem_path, gdal_options)?;
     let mut layer = if let Some(layer_name) = params.layer_name {
         dataset.layer_by_name(layer_name)?
@@ -265,12 +304,26 @@ pub fn df_from_layer<'l>(
     let feat_count = layer.try_feature_count();
 
     let params = params.unwrap_or_default();
-    let fid_column_name = params.fid_column_name.unwrap_or("fid");
+    let fid_column_name = params.fid_column_name;
     let geometry_column_name = params.geometry_column_name.unwrap_or("geometry");
+    let geometry_format = params.geometry_format;
 
     let mut numkeys = 0;
 
-    let mut unprocessed_series_map = HashMap::new();
+    let mut field_series_map = HashMap::new();
+    let mut geom_series = UnprocessedSeries {
+        name: geometry_column_name.to_owned(),
+        nullable: false,
+        datatype: geometry_format.into(),
+        data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
+    };
+
+    let mut fid_series = UnprocessedSeries {
+        name: fid_column_name.clone().unwrap_or("").to_owned(),
+        nullable: false,
+        datatype: UnprocessedDataType::Fid,
+        data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
+    };
 
     for (idx, feature) in &mut layer.features().enumerate() {
         if let Some(offset) = params.offset {
@@ -290,70 +343,54 @@ pub fn df_from_layer<'l>(
         }
 
         // Process FID
-        if !fid_column_name.is_empty() {
+        if fid_column_name.is_some() {
             if let Some(fid) = feature.fid() {
-                let fid_entry = unprocessed_series_map
-                    .entry(fid_column_name.to_owned())
-                    .or_insert_with(|| UnprocessedSeries {
-                        name: fid_column_name.to_owned(),
-                        nullable: false,
-                        datatype: UnprocessedDataType::Fid,
-                        data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
-                    });
-                fid_entry.data.push(GdalData::Fid(fid));
+                fid_series.data.push(GdalData::Fid(fid));
             }
         }
 
         // Process Geometry
-        let geom_entry = unprocessed_series_map
-            .entry(geometry_column_name.to_owned())
-            .or_insert_with(|| UnprocessedSeries {
-                name: geometry_column_name.to_owned(),
-                nullable: false,
-                datatype: UnprocessedDataType::Geometry,
-                data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
-            });
-
         let geometry = feature.geometry();
         if geometry.is_empty() {
-            geom_entry.data.push(GdalData::Value(None));
+            geom_series.data.push(GdalData::Value(None));
         } else {
-            let wkb = feature.geometry().wkb()?;
-            geom_entry.data.push(GdalData::Geometry(wkb));
+            match geometry_format {
+                GeometryFormat::WKB => {
+                    let wkb = geometry.wkb()?;
+                    geom_series.data.push(GdalData::Geometry(wkb));
+                }
+                GeometryFormat::WKT => {
+                    let wkt = geometry.wkt()?;
+                    geom_series.data.push(GdalData::Value(Some(FieldValue::StringValue(wkt))));
+                }
+                GeometryFormat::GeoJson => {
+                    let geojson = geometry.json()?;
+                    geom_series.data.push(GdalData::Value(Some(FieldValue::StringValue(geojson))));
+                }
+            }  
         }
 
         // Process all data fields
         let mut field_count = 0;
         for (name, value) in feature.fields() {
-            if name == geometry_column_name {
-                return Err(Error::GeometryColumnCollision(
-                    geometry_column_name.to_string(),
-                ));
-            }
-            if name == fid_column_name {
-                return Err(Error::FidColumnCollision(fid_column_name.to_string()));
-            }
+            let entry = field_series_map.entry(name.clone()).or_insert_with(|| {
+                let mut series = UnprocessedSeries {
+                    name: name.clone(),
+                    nullable: false,
+                    datatype: gdal_type_to_unprocessed_type(&value),
+                    data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
+                };
 
-            let entry = unprocessed_series_map
-                .entry(name.clone())
-                .or_insert_with(|| {
-                    let mut series = UnprocessedSeries {
-                        name: name.clone(),
-                        nullable: false,
-                        datatype: gdal_type_to_unprocessed_type(&value),
-                        data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
-                    };
-
-                    // Fill data with nulls for past features
-                    if idx != 0 {
-                        for _ in 0..idx {
-                            series.data.push(GdalData::Value(None));
-                        }
-                        series.nullable = true;
+                // Fill data with nulls for past features
+                if idx != 0 {
+                    for _ in 0..idx {
+                        series.data.push(GdalData::Value(None));
                     }
-                    numkeys += 1;
-                    series
-                });
+                    series.nullable = true;
+                }
+                numkeys += 1;
+                series
+            });
 
             if value.is_none() && !entry.nullable {
                 entry.nullable = true;
@@ -365,7 +402,7 @@ pub fn df_from_layer<'l>(
 
         // If field_count doesn't match numkeys, top up any missing fields with nulls
         if field_count != numkeys {
-            for entry in unprocessed_series_map.values_mut() {
+            for entry in field_series_map.values_mut() {
                 if entry.data.len() < idx + 1 {
                     entry.data.push(GdalData::Value(None));
 
@@ -377,30 +414,36 @@ pub fn df_from_layer<'l>(
         }
     }
 
-    // Process the HashMap into a Vec of Series
-    let mut series_vec = Vec::with_capacity(unprocessed_series_map.len());
-
-    // Process the Feature ID first
-    if !fid_column_name.is_empty() {
-        if let Some(fid_series) = unprocessed_series_map.remove(fid_column_name) {
-            series_vec.push(fid_series.process());
+    // If there's naming conflicts, rename conflicting fields
+    if let Some(mut conflicting_series) = field_series_map.remove(geometry_column_name) {
+        conflicting_series.name = format!("{}_original", geometry_column_name);
+        field_series_map.insert(conflicting_series.name.clone(), conflicting_series);
+    }
+    if let Some(fid_column_name) = fid_column_name {
+        if let Some(mut conflicting_series) = field_series_map.remove(fid_column_name) {
+            conflicting_series.name = format!("{}_original", fid_column_name);
+            field_series_map.insert(conflicting_series.name.clone(), conflicting_series);
         }
     }
 
-    // Save the geometry column for last
-    let geometry_series = unprocessed_series_map.remove(geometry_column_name);
+    // Process the HashMap into a Vec of Series
+    let mut series_vec = Vec::with_capacity(field_series_map.len() + 2);
 
-    for (_, unprocessed_series) in unprocessed_series_map {
+    // Process the Feature ID first
+    if fid_column_name.is_some() {
+        series_vec.push(fid_series.process());
+    }
+
+    // Process the field series
+    for (_, unprocessed_series) in field_series_map {
         if let UnprocessedDataType::Null = unprocessed_series.datatype {
             continue;
         }
         series_vec.push(unprocessed_series.process());
     }
 
-    // Add the geometry column last
-    if let Some(geometry_series) = geometry_series {
-        series_vec.push(geometry_series.process());
-    }
+    // Process the geometry series
+    series_vec.push(geom_series.process());
 
     Ok(DataFrame::new(series_vec)?)
 }

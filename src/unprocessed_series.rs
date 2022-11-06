@@ -22,7 +22,7 @@ pub(crate) enum UnprocessedDataType {
     Date,
     DateTime,
     Null,
-    Geometry,
+    GeometryWKB,
     Fid,
 }
 
@@ -151,7 +151,7 @@ impl UnprocessedSeries {
                     let ca = DatetimeChunked::from_naive_datetime_options(&self.name, vec, TimeUnit::Nanoseconds);
                     ca.into_series()
                 }
-                UnprocessedDataType::Geometry => {
+                UnprocessedDataType::GeometryWKB => {
                     let ca: BinaryChunked = self
                         .data
                         .into_iter()
@@ -263,7 +263,7 @@ impl UnprocessedSeries {
                     );
                     ca.into_series()
                 }
-                UnprocessedDataType::Geometry => {
+                UnprocessedDataType::GeometryWKB => {
                     let ca: BinaryChunked = self
                         .data
                         .into_iter()
