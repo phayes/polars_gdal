@@ -6,6 +6,7 @@ mod unprocessed_series;
 pub use error::*;
 pub extern crate gdal;
 
+use gdal::errors::GdalError;
 use gdal::vector::LayerAccess;
 use gdal::Dataset;
 use polars::prelude::*;
@@ -21,8 +22,7 @@ pub struct Params<'a> {
     /// GDal bitflags used by [`Dataset::open_ex`]. Flags are combined with a bitwise OR `|`.
     ///
     /// # Example
-    ///
-    /// ```rust
+    /// ```
     /// use geopolars_gdal::gdal;
     ///
     /// let mut params = geopolars_gdal::Params::default();
@@ -36,7 +36,7 @@ pub struct Params<'a> {
     /// Array of "KEY=value" strings to pass to the GDAL driver. See https://gdal.org/drivers/vector/index.html
     ///
     /// # Example
-    /// ```rust
+    /// ```
     /// use geopolars_gdal::gdal;
     ///
     /// let mut params = geopolars_gdal::Params::default();
@@ -100,29 +100,72 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
 /// ``` # ignore
 /// use geopolars_gdal::df_from_bytes;
 ///
-/// let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
+/// let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes();
 /// let df = df_from_bytes(geojson, None).unwrap();
 /// println!("{}", df);
 /// ```
 pub fn df_from_bytes(
-    bytes: Vec<u8>,
+    data: &[u8],
     filename_hint: Option<&str>,
     params: Option<Params>,
 ) -> Result<DataFrame, Error> {
-    static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
+    use gdal_sys::VSIFCloseL;
+    use gdal_sys::VSIFileFromMemBuffer;
+    use std::ffi::c_char;
+    use std::ffi::CStr;
+    use std::ffi::CString;
+
+    fn _last_null_pointer_err(method_name: &'static str) -> GdalError {
+        let last_err_msg = _string(unsafe { gdal_sys::CPLGetLastErrorMsg() });
+        unsafe { gdal_sys::CPLErrorReset() };
+        GdalError::NullPointer {
+            method_name,
+            msg: last_err_msg,
+        }
+    }
+
+    fn _string(raw_ptr: *const c_char) -> String {
+        let c_str = unsafe { CStr::from_ptr(raw_ptr) };
+        c_str.to_string_lossy().into_owned()
+    }
+
+    // Parse params and get defaults
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
-
     let filename_hint = filename_hint.unwrap_or("layer");
 
+    // Do some safety checks that are requied for the safety of the following unsafe parts
+    if data.is_empty() {
+        return Err(Error::EmptyData);
+    }
+    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_READONLY != gdal::GdalOpenFlags::GDAL_OF_READONLY {
+        return Err(Error::ReadonlyMustSet);
+    }
+    if params.open_flags & gdal::GdalOpenFlags::GDAL_OF_UPDATE == gdal::GdalOpenFlags::GDAL_OF_UPDATE {
+        return Err(Error::UpdateNotSupported);
+    }
+
+    // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
+    static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let input_mem_path = format!(
         "/vsimem/geopolars_gdal/{}/{}/{}",
         std::process::id(),
         MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
         filename_hint
     );
-    gdal::vsi::create_mem_file(&input_mem_path, bytes)?;
+    
+    // Call into the C function VSIFileFromMemBuffer
+    // SAFETY: VSIFileFromMemBuffer accepts a pointed to mutable data because in other circumstances it can be used to write data. 
+    //         However, we're ensuring that it's only opened in read-only mode, which allows us to safely coerse a immutable &[u8] to a *mut u8.
+    let path = CString::new(input_mem_path.as_bytes()).unwrap();
+    let ptr = data.as_ptr() as *mut u8;
+    let handle =
+        unsafe { VSIFileFromMemBuffer(path.as_ptr(), ptr, data.len() as u64, true as i32) };
+    if handle.is_null() {
+        return Err(_last_null_pointer_err("VSIGetMemFileBuffer").into());
+    }
 
+    // Load the dataset from the VSI file handler
     let dataset = gdal::Dataset::open_ex(&input_mem_path, gdal_options)?;
     let mut layer = if let Some(layer_name) = params.layer_name {
         dataset.layer_by_name(layer_name)?
@@ -132,11 +175,20 @@ pub fn df_from_bytes(
         dataset.layer(0)?
     };
 
-    df_from_layer(&mut layer, Some(params))
+    // Read the dataframe out of the layer
+    let df = df_from_layer(&mut layer, Some(params));
+
+    // Release the VSI handle
+    unsafe {
+        VSIFCloseL(handle);
+    }
+
+    // Return the dataframe
+    df
 }
 
 /// Given a filepath or a URI, read the resource into a dataframe.
-/// 
+///
 /// The simplest resource is a file on the local filesystem, in which case we would simply pass in a filepath.
 /// Fetching resources over http(s) is supported using a URL.
 /// Connecting to PostGIS is supported using a `postgres://user:pass@host/dbname` URI in combination with setting `Params::layer_name` to the name of the table.
@@ -151,24 +203,27 @@ pub fn df_from_bytes(
 /// let df = df_from_resource("my_shapefile.shp", None).unwrap();
 /// println!("{}", df);
 /// ```
-/// 
+///
 /// # Remote file example
 /// ``` # ignore
 /// use geopolars_gdal::df_from_resource;
 /// let df = df_from_resource("https://raw.githubusercontent.com/ebrelsford/geojson-examples/master/queens.geojson", None).unwrap();
 /// println!("{}", df);
 /// ```
-/// 
+///
 /// # PostGIS example
 /// ``` # ignore
 /// use geopolars_gdal::{df_from_resource, Params};
-/// 
+///
 /// let mut params = crate::Params::default();
 /// params.layer_name = Some("some_table_name");
 /// let df = df_from_resource("postgresql://user:pass@hostname/dbname", Some(params)).unwrap();
 /// println!("{}", df);
 /// ```
-pub fn df_from_resource<P: AsRef<Path>>(path: P, params: Option<Params>) -> Result<DataFrame, Error> {
+pub fn df_from_resource<P: AsRef<Path>>(
+    path: P,
+    params: Option<Params>,
+) -> Result<DataFrame, Error> {
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
 
@@ -395,11 +450,11 @@ mod tests {
 
     #[test]
     fn test_df_from_bytes() {
-        let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
-        let _df = df_from_bytes(geojson.clone(), None, None).unwrap();
+        let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes();
+        let _df = df_from_bytes(geojson, None, None).unwrap();
         //println!("{}", _df);
 
-        let shapefile = include_bytes!("../test_data/stations_shapefile.shp.zip").to_vec();
+        let shapefile = include_bytes!("../test_data/stations_shapefile.shp.zip");
         let _df = df_from_bytes(shapefile, Some("stations_shapefile.shp.zip"), None).unwrap();
         //println!("{}", _df);
     }
@@ -443,6 +498,6 @@ mod tests {
             None,
         )
         .unwrap();
-        println!("{}", df);   
+        println!("{}", df);
     }
 }

@@ -10,6 +10,15 @@ pub enum Error {
     #[error("Polars Error: {0}")]
     Polars(#[from] PolarsError),
 
+    #[error("Empty data")]
+    EmptyData,
+
+    #[error("GDAL READONLY bitflag must be set for this operation.")]
+    ReadonlyMustSet,
+
+    #[error("GDAL update bitfla is not supported for this operation.")]
+    UpdateNotSupported,
+
     #[error("Feature limit of {0} features reached")]
     FeatureLimitReached(usize),
 
