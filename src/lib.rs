@@ -541,6 +541,8 @@ pub fn gdal_layer_from_df<'a>(
 
 /// Given a dataframe, get bytes in a GDAL geospatial format
 /// 
+/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`. 
+/// 
 /// # Example
 /// ```rust # ignore
 /// let df: DataFrame = ...;
@@ -557,6 +559,7 @@ pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u
         BYTES_FROM_DF_MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
     );
 
+    // TODO: Support rasters
     let mut dataset = driver.create_vector_only(&input_mem_path)?;
 
     let _layer = gdal_layer_from_df(&df, &mut dataset)?;
@@ -568,19 +571,26 @@ pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u
     Ok(owned_bytes)
 }
 
-
 /// Given a dataframe, write to a GDAL resource path and return the dataset.
+/// 
+/// If given a path to local disk, the file will be written to local disk. 
+/// If given a URI for a GDAL supported remote resource, the dataframe will be written to that resource in the specified geospatial format.
+/// 
+/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`. 
 /// 
 /// # Example
 /// ```rust # ignore
+/// use polars_gdal::{gdal, gdal_dataset_from_df};
+/// 
 /// let df: DataFrame = ...;
 /// let shapefule_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
 /// let dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp")?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```
 pub fn gdal_dataset_from_df<P: AsRef<Path>>(df: &DataFrame, driver: &gdal::Driver, path: P) -> Result<Dataset, Error> {
+    // TODO: Support rasters
     let mut dataset = driver.create_vector_only(path)?;
-
+    
     let _layer = gdal_layer_from_df(&df, &mut dataset)?;
     dataset.flush_cache();
 
