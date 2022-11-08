@@ -1,6 +1,6 @@
 Read and write GDAL-compatible geospatial data into [Polars](https://www.pola.rs) and [GeoPolars](https://github.com/geopolars/geopolars).
 
-Supports reading the following geospatial formats into a Polars Dataframe:
+Supports reading and writing the following geospatial formats into / from a Polars Dataframe:
 
 1. GeoJSON
 2. ShapeFiles
