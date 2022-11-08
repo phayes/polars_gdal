@@ -121,7 +121,7 @@ fn test_pure_gdal() {
 }
 
 #[test]
-fn test_layer_from_df() {
+fn test_gdal_layer_from_df() {
     use std::io::Cursor;
     use polars::prelude::IpcReader;
 
