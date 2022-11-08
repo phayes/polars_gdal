@@ -568,6 +568,25 @@ pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u
     Ok(owned_bytes)
 }
 
+
+/// Given a dataframe, write to a GDAL resource path and return the dataset.
+/// 
+/// # Example
+/// ```rust # ignore
+/// let df: DataFrame = ...;
+/// let shapefule_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
+/// let dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp")?;
+/// println!("{}", String::from_utf8(geojson_bytes)?);
+/// ```
+pub fn gdal_dataset_from_df<P: AsRef<Path>>(df: &DataFrame, driver: &gdal::Driver, path: P) -> Result<Dataset, Error> {
+    let mut dataset = driver.create_vector_only(path)?;
+
+    let _layer = gdal_layer_from_df(&df, &mut dataset)?;
+    dataset.flush_cache();
+
+    Ok(dataset)
+}
+
 fn polars_value_to_gdal_value(
     polars_val: &polars::datatypes::AnyValue,
 ) -> Option<gdal::vector::FieldValue> {
