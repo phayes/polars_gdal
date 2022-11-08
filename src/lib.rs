@@ -548,7 +548,7 @@ pub fn gdal_layer_from_df<'a>(
 /// let geojson_bytes = df_to_bytes(&df, &json_driver)?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```
-pub fn gdal_bytes_from_df(df: &DataFrame, driver: gdal::Driver) -> Result<Vec<u8>, Error> {
+pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u8>, Error> {
     // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
     static BYTES_FROM_DF_MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let input_mem_path = format!(
@@ -559,7 +559,7 @@ pub fn gdal_bytes_from_df(df: &DataFrame, driver: gdal::Driver) -> Result<Vec<u8
 
     let mut dataset = driver.create_vector_only(&input_mem_path)?;
 
-    let _layer = layer_from_df(&df, &mut dataset)?;
+    let _layer = gdal_layer_from_df(&df, &mut dataset)?;
     dataset.flush_cache();
 
     let mut owned_bytes = vec![];

@@ -142,3 +142,17 @@ fn test_gdal_layer_from_df() {
     }).unwrap();
     // println!("{}", String::from_utf8(json_bytes).unwrap());
 }
+
+#[test]
+fn test_gdal_bytes_from_df() {
+    use std::io::Cursor;
+    use polars::prelude::IpcReader;
+
+    let df_bytes = include_bytes!("../test_data/cities.arrow");
+    let cursor = Cursor::new(df_bytes);
+
+    let df = IpcReader::new(cursor).finish().unwrap();
+    let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
+    let geojson_bytes = gdal_bytes_from_df(&df, &json_driver).unwrap();
+    println!("{}", String::from_utf8(geojson_bytes).unwrap());
+}
