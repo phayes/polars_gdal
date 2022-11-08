@@ -153,6 +153,6 @@ fn test_gdal_bytes_from_df() {
 
     let df = IpcReader::new(cursor).finish().unwrap();
     let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
-    let geojson_bytes = gdal_bytes_from_df(&df, &json_driver).unwrap();
-    println!("{}", String::from_utf8(geojson_bytes).unwrap());
+    let _geojson_bytes = gdal_bytes_from_df(&df, &json_driver).unwrap();
+    // println!("{}", String::from_utf8(_geojson_bytes).unwrap());
 }
