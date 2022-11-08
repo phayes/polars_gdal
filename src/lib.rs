@@ -3,19 +3,25 @@
 mod error;
 mod unprocessed_series;
 
+#[cfg(test)]
+mod test;
+
 pub use error::*;
 pub extern crate gdal;
 
 use gdal::errors::GdalError;
+use gdal::spatial_ref::SpatialRef;
+use gdal::vector::FieldValue as GdalValue;
 use gdal::vector::LayerAccess;
+use gdal::vector::OGRFieldType;
 use gdal::Dataset;
+use gdal::LayerOptions;
 use polars::prelude::*;
 use std::collections::HashMap;
 use std::path::Path;
 use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use unprocessed_series::*;
-use gdal::vector::FieldValue;
 
 /// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
@@ -24,9 +30,9 @@ pub struct Params<'a> {
     ///
     /// # Example
     /// ```
-    /// use geopolars_gdal::gdal;
+    /// use polars_gdal::gdal;
     ///
-    /// let mut params = geopolars_gdal::Params::default();
+    /// let mut params = polars_gdal::Params::default();
     /// params.open_flags = gdal::GdalOpenFlags::GDAL_OF_READONLY | gdal::GdalOpenFlags::GDAL_OF_VERBOSE_ERROR;
     /// ```
     pub open_flags: gdal::GdalOpenFlags,
@@ -38,9 +44,9 @@ pub struct Params<'a> {
     ///
     /// # Example
     /// ```
-    /// use geopolars_gdal::gdal;
+    /// use polars_gdal::gdal;
     ///
-    /// let mut params = geopolars_gdal::Params::default();
+    /// let mut params = polars_gdal::Params::default();
     /// let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
     /// params.open_options = Some(&csv_parsing_options);
     /// ```
@@ -133,7 +139,7 @@ impl Into<UnprocessedDataType> for GeometryFormat {
 ///
 /// # Example
 /// ``` # ignore
-/// use geopolars_gdal::df_from_bytes;
+/// use polars_gdal::df_from_bytes;
 ///
 /// let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes();
 /// let df = df_from_bytes(geojson, None).unwrap();
@@ -187,7 +193,7 @@ pub fn df_from_bytes(
     // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
     static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let input_mem_path = format!(
-        "/vsimem/geopolars_gdal/{}/{}/{}",
+        "/vsimem/polars_gdal/df_from_bytes/{}/{}/{}",
         std::process::id(),
         MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
         filename_hint
@@ -238,21 +244,21 @@ pub fn df_from_bytes(
 ///
 /// # Local file example
 /// ``` # ignore
-/// use geopolars_gdal::df_from_resource;
+/// use polars_gdal::df_from_resource;
 /// let df = df_from_resource("my_shapefile.shp", None).unwrap();
 /// println!("{}", df);
 /// ```
 ///
 /// # Remote file example
 /// ``` # ignore
-/// use geopolars_gdal::df_from_resource;
+/// use polars_gdal::df_from_resource;
 /// let df = df_from_resource("https://raw.githubusercontent.com/ebrelsford/geojson-examples/master/queens.geojson", None).unwrap();
 /// println!("{}", df);
 /// ```
 ///
 /// # PostGIS example
 /// ``` # ignore
-/// use geopolars_gdal::{df_from_resource, Params};
+/// use polars_gdal::{df_from_resource, Params};
 ///
 /// let mut params = crate::Params::default();
 /// params.layer_name = Some("some_table_name");
@@ -287,7 +293,7 @@ pub fn df_from_resource<P: AsRef<Path>>(
 ///
 /// # Example
 /// ```rust # ignore
-/// use geopolars_gdal::{df_from_layer, gdal};
+/// use polars_gdal::{df_from_layer, gdal};
 /// use gdal::vector::sql;
 ///
 /// let dataset = gdal::Dataset::open("my_shapefile.shp")?;
@@ -361,13 +367,17 @@ pub fn df_from_layer<'l>(
                 }
                 GeometryFormat::WKT => {
                     let wkt = geometry.wkt()?;
-                    geom_series.data.push(GdalData::Value(Some(FieldValue::StringValue(wkt))));
+                    geom_series
+                        .data
+                        .push(GdalData::Value(Some(GdalValue::StringValue(wkt))));
                 }
                 GeometryFormat::GeoJson => {
                     let geojson = geometry.json()?;
-                    geom_series.data.push(GdalData::Value(Some(FieldValue::StringValue(geojson))));
+                    geom_series
+                        .data
+                        .push(GdalData::Value(Some(GdalValue::StringValue(geojson))));
                 }
-            }  
+            }
         }
 
         // Process all data fields
@@ -448,99 +458,175 @@ pub fn df_from_layer<'l>(
     Ok(DataFrame::new(series_vec)?)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// Given a dataframe, create a GDAL layer
+/// 
+/// Given a pre-existing GDAL Dataset, create a new layer from a Polars dataframe.
+///
+/// # Example
+/// ```rust # ignore
+/// let df: DataFrame = ...;
+/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
+/// let mut dataset: gldal::Dataset = json_driver.create_vector_only("my_json_file.json")?;
+/// layer_from_df(&df, &mut dataset)?;
+/// dataset.flush_cache();
+/// ```
+pub fn layer_from_df<'a>(
+    df: &DataFrame,
+    dataset: &'a mut gdal::Dataset,
+) -> Result<gdal::vector::Layer<'a>, Error> {
+    let row_count = df.height();
 
-    #[test]
-    fn test_df_from_resource() {
-        // Test GeoJSON
-        let _df = df_from_resource(
-            "test_data/us_states.feature_collection.implicit_4326.json",
-            None,
-        )
-        .unwrap();
-        //println!("{}", _df);
-
-        // Test GeoJSON
-        let _df = df_from_resource(
-            "test_data/global_large_lakes.feature_collection.implicit_4326.json",
-            None,
-        )
-        .unwrap();
-        //println!("{}", _df);
-
-        // Test Shapefile
-        let _df = df_from_resource("test_data/stations.shp", None).unwrap();
-        // println!("{}", _df);
-
-        // Test CSV with options
-        let mut params = crate::Params::default();
-        let csv_parsing_options = [
-            "EMPTY_STRING_AS_NULL=YES",
-            "KEEP_GEOM_COLUMNS=NO",
-            "X_POSSIBLE_NAMES=Lon*",
-            "Y_POSSIBLE_NAMES=Lat*",
-        ];
-        params.open_options = Some(&csv_parsing_options);
-        let _df = df_from_resource("test_data/lat_lon_countries.csv", Some(params)).unwrap();
-        // println!("{}", _df);
-
-        // Test SpatialLite
-        let _df = df_from_resource("test_data/test_spatialite.sqlite", None).unwrap();
-        // println!("{}", _df);
+    if row_count == 0 {
+        panic!("No rows to do");
     }
 
-    #[test]
-    fn test_df_from_bytes() {
-        let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes();
-        let _df = df_from_bytes(geojson, None, None).unwrap();
-        //println!("{}", _df);
+    // All prop columns as (col-index, name, field-type)
+    let props: Vec<(usize, &str, OGRFieldType::Type)> = df
+        .get_columns()
+        .iter()
+        .enumerate()
+        .map(|(i, c)| (i, c.name(), polars_type_id_to_gdal_type_id(c.dtype())))
+        .filter(|(_i, n, t)| *n != "geometry" && t.is_some())
+        .map(|(i, n, t)| (i, n, t.unwrap()))
+        .collect::<Vec<_>>();
 
-        let shapefile = include_bytes!("../test_data/stations_shapefile.shp.zip");
-        let _df = df_from_bytes(shapefile, Some("stations_shapefile.shp.zip"), None).unwrap();
-        //println!("{}", _df);
+    let geom_idx = df.find_idx_by_name("geometry").unwrap(); // TODO: Error that geom column cannot be found
+
+    let mut row = df.get_row(0);
+    let first_geom = match &row.0[geom_idx] {
+        AnyValue::Binary(geom) => gdal::vector::Geometry::from_wkb(geom)?,
+        AnyValue::BinaryOwned(geom) => gdal::vector::Geometry::from_wkb(geom)?,
+        AnyValue::Utf8(geom) => gdal::vector::Geometry::from_wkt(geom)?,
+        AnyValue::Utf8Owned(geom) => gdal::vector::Geometry::from_wkt(geom.as_str())?,
+        AnyValue::Null => todo!("Handle case where geometry column is partially nulls and we need to scan down to find the type"),
+        _ => panic!("Geometry column must be of type Binary or BinaryOwned"), // TODO: Error
+    };
+    let geom_type = first_geom.geometry_type();
+
+    let mut layer = dataset.create_layer(LayerOptions {
+        name: "geometry", // TODO: Passed layer name or geometry column name
+        srs: Some(&SpatialRef::from_epsg(4326).unwrap()),
+        ty: geom_type,
+        ..Default::default()
+    })?;
+
+    let fields_def: Vec<(&str, OGRFieldType::Type)> =
+        { props.iter().map(|(_, n, t)| (*n, *t)).collect() };
+    layer.create_defn_fields(&fields_def)?;
+
+    for idx in 0..row_count {
+        df.get_row_amortized(idx, &mut row);
+        let geom = match &row.0[geom_idx] {
+            AnyValue::Binary(geom) => gdal::vector::Geometry::from_wkb(geom)?,
+            AnyValue::BinaryOwned(geom) => gdal::vector::Geometry::from_wkb(&geom)?,
+            AnyValue::Utf8(geom) => gdal::vector::Geometry::from_wkt(geom)?,
+            AnyValue::Utf8Owned(geom) => gdal::vector::Geometry::from_wkt(geom.as_str())?,
+            AnyValue::Null => gdal::vector::Geometry::empty(geom_type)?,
+            _ => panic!("Geometry column must be of type Binary or BinaryOwned"), // TODO: Error
+        };
+        let mut field_values = Vec::with_capacity(props.len());
+        let mut field_names = Vec::with_capacity(props.len());
+        for (i, n, _) in props.iter() {
+            let val = polars_value_to_gdal_value(&row.0[*i]);
+            if let Some(val) = val {
+                field_values.push(val);
+                field_names.push(*n);
+            }
+        }
+        layer.create_feature_fields(geom, &field_names, &field_values)?
     }
 
-    #[test]
-    fn test_df_from_layer() {
-        let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes().to_vec();
+    Ok(layer)
+}
 
-        let input_mem_path = format!("/vsimem/geopolars_gdal/test_geojson/layer");
-        gdal::vsi::create_mem_file(&input_mem_path, geojson).unwrap();
-        let dataset = gdal::Dataset::open(&input_mem_path).unwrap();
+/// Given a dataframe, get bytes in a GDAL geospatial format
+/// 
+/// # Example
+/// ```rust # ignore
+/// let df: DataFrame = ...;
+/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
+/// let geojson_bytes = df_to_bytes(&df, &json_driver)?;
+/// println!("{}", String::from_utf8(geojson_bytes)?);
+/// ```
+pub fn bytes_from_df(df: &DataFrame, driver: gdal::Driver) -> Result<Vec<u8>, Error> {
+    // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
+    static BYTES_FROM_DF_MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
+    let input_mem_path = format!(
+        "/vsimem/polars_gdal/bytes_from_df/{}/{}/layer",
+        std::process::id(),
+        BYTES_FROM_DF_MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
+    );
 
-        let query = "SELECT * FROM layer WHERE name = 'foo'";
-        let mut result_set = dataset
-            .execute_sql(query, None, gdal::vector::sql::Dialect::DEFAULT)
-            .unwrap()
-            .unwrap();
+    let mut dataset = driver.create_vector_only(&input_mem_path)?;
 
-        let _df = df_from_layer(&mut result_set, None).unwrap();
-        //println!("{}", _df);
+    let _layer = layer_from_df(&df, &mut dataset)?;
+    dataset.flush_cache();
+
+    let mut owned_bytes = vec![];
+    gdal::vsi::call_on_mem_file_bytes( &input_mem_path, |bytes| owned_bytes.extend_from_slice(bytes))?;
+
+    Ok(owned_bytes)
+}
+
+fn polars_value_to_gdal_value(
+    polars_val: &polars::datatypes::AnyValue,
+) -> Option<gdal::vector::FieldValue> {
+    match polars_val {
+        AnyValue::Int8(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::Int16(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::Int32(val) => Some(GdalValue::IntegerValue(*val)),
+        AnyValue::Int64(val) => Some(GdalValue::Integer64Value(*val)),
+        AnyValue::UInt8(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::UInt16(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::UInt32(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::UInt64(val) => Some(GdalValue::Integer64Value(*val as i64)),
+        AnyValue::Float32(val) => Some(GdalValue::RealValue(*val as f64)),
+        AnyValue::Float64(val) => Some(GdalValue::RealValue(*val)),
+        AnyValue::Utf8(val) => Some(GdalValue::StringValue(val.to_string())),
+        AnyValue::Utf8Owned(val) => Some(GdalValue::StringValue(val.to_string().into())),
+        AnyValue::Boolean(val) => Some(GdalValue::IntegerValue(*val as i32)),
+        AnyValue::Date(_val) => todo!(),
+        AnyValue::Time(val) => Some(GdalValue::Integer64Value(*val)),
+        AnyValue::Datetime(_val, _unit, _opts) => todo!(),
+        AnyValue::Duration(val, _) => Some(GdalValue::Integer64Value(*val)),
+        AnyValue::List(_) => todo!(),
+        AnyValue::Null => None,
+        AnyValue::Binary(_) => None,
+        AnyValue::BinaryOwned(_) => None,
     }
+}
 
-    #[allow(dead_code)]
-    fn test_postgis() {
-        let mut params = crate::Params::default();
-        params.layer_name = Some("parcel_polygon");
-        params.truncating_limit = Some(100);
-
-        let df = df_from_resource(
-            "postgresql://postgres:postgres@localhost/carbon",
-            Some(params),
-        )
-        .unwrap();
-        println!("{}", df);
-    }
-
-    #[allow(dead_code)]
-    fn test_https() {
-        let df = df_from_resource(
-            "https://raw.githubusercontent.com/ebrelsford/geojson-examples/master/queens.geojson",
-            None,
-        )
-        .unwrap();
-        println!("{}", df);
+fn polars_type_id_to_gdal_type_id(polars_type: &DataType) -> Option<OGRFieldType::Type> {
+    match polars_type {
+        DataType::Int8 => Some(OGRFieldType::OFTInteger),
+        DataType::Int16 => Some(OGRFieldType::OFTInteger),
+        DataType::Int32 => Some(OGRFieldType::OFTInteger),
+        DataType::Int64 => Some(OGRFieldType::OFTInteger64),
+        DataType::UInt8 => Some(OGRFieldType::OFTInteger),
+        DataType::UInt16 => Some(OGRFieldType::OFTInteger),
+        DataType::UInt32 => Some(OGRFieldType::OFTInteger),
+        DataType::UInt64 => Some(OGRFieldType::OFTInteger64),
+        DataType::Float32 => Some(OGRFieldType::OFTReal),
+        DataType::Float64 => Some(OGRFieldType::OFTReal),
+        DataType::Utf8 => Some(OGRFieldType::OFTString),
+        DataType::Boolean => Some(OGRFieldType::OFTInteger),
+        DataType::Date => Some(OGRFieldType::OFTDate),
+        DataType::Time => Some(OGRFieldType::OFTInteger64),
+        DataType::Datetime(_, _) => Some(OGRFieldType::OFTDateTime),
+        DataType::Duration(_) => Some(OGRFieldType::OFTInteger64),
+        DataType::Binary => Some(OGRFieldType::OFTBinary),
+        DataType::List(dtype) => match dtype.as_ref() {
+            DataType::Int8 => Some(OGRFieldType::OFTIntegerList),
+            DataType::Int16 => Some(OGRFieldType::OFTIntegerList),
+            DataType::Int32 => Some(OGRFieldType::OFTIntegerList),
+            DataType::Int64 => Some(OGRFieldType::OFTInteger64List),
+            DataType::UInt8 => Some(OGRFieldType::OFTIntegerList),
+            DataType::UInt16 => Some(OGRFieldType::OFTIntegerList),
+            DataType::UInt32 => Some(OGRFieldType::OFTIntegerList),
+            DataType::UInt64 => Some(OGRFieldType::OFTInteger64List),
+            DataType::Utf8 => Some(OGRFieldType::OFTStringList),
+            _ => None,
+        },
+        _ => None,
     }
 }
