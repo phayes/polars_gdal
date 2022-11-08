@@ -72,11 +72,20 @@ let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
 let geojson_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 ```
 
-### Example 6: Write a shapefile to disk from a Dataframe
+### Example 6: GeoJSON bytes from a Dataframe
 ```rust # ignore
-use geopolars_gdal::{gdal_bytes_from_df, WriteParams};
+use geopolars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
 let df: DataFrame = ...;
-let shapefule_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
-let _dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/on/disk/my_shapefile.shp")?;
+let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
+let json_bytes = gdal_bytes_from_df(&df, &json_driver)?;
+```
+
+### Example 7: Write a shapefile to disk from a Dataframe
+```rust # ignore
+use geopolars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
+
+let df: DataFrame = ...;
+let shapefile_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
+let _dataset = gdal_dataset_from_df(&df, &shapefile_driver, "/some/path/on/disk/my_shapefile.shp")?;
 ```
