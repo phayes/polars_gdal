@@ -30,7 +30,7 @@ let df = df_from_bytes(geojson, None, None).unwrap();
 println!("{}", df);
 ```
 
-### Example 3: Dataframe from GDAL Layer with filtering query
+### Example 3: DataFrame from GDAL Layer with filtering query
 ```rust # ignore
 use polars_gdal::{df_from_layer, gdal};
 use gdal::vector::sql;
@@ -43,7 +43,7 @@ let df = df_from_layer(&mut result_set, None).unwrap();
 println!("{}", df);
 ```
 
-### Example 4: Dataframe from Latitude / Longitude CSV with custom parsing options
+### Example 4: DataFrame from Latitude / Longitude CSV with custom parsing options
 ```rust # ignore
 let mut params = polars_gdal::Params::default();
 let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
@@ -53,7 +53,7 @@ let df = df_from_resource("lat_lon_countries.csv", Some(params)).unwrap();
 println!("{}", df);
 ```
 
-### Example 5: Dataframe from a PostGIS table
+### Example 5: DataFrame from a PostGIS table
 ```rust # ignore
 use polars_gdal::{df_from_resource, Params};
 
@@ -72,7 +72,7 @@ let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
 let geojson_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 ```
 
-### Example 6: GeoJSON bytes from a Dataframe
+### Example 6: GeoJSON bytes from a DataFrame
 ```rust # ignore
 use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
@@ -81,7 +81,7 @@ let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
 let json_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 ```
 
-### Example 7: Write a shapefile to disk from a Dataframe
+### Example 7: Write a shapefile to disk from a DataFrame
 ```rust # ignore
 use polars_gdal::{gdal, gdal_dataset_from_df, WriteParams};
 
