@@ -133,7 +133,7 @@ fn test_layer_from_df() {
     let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
     let mut dataset = json_driver.create_vector_only("/vsimem/polars_gdal/test_layer_from_df/layer.json").unwrap();
 
-    let _layer = layer_from_df(&df, &mut dataset).unwrap();
+    let _layer = gdal_layer_from_df(&df, &mut dataset).unwrap();
     dataset.flush_cache();
 
     let mut json_bytes = vec![];
