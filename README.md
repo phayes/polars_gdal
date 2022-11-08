@@ -15,14 +15,14 @@ Supports reading the following geospatial formats into a Polars Dataframe:
 
 ### Example 1: Dataframe from a file
 ```rust # ignore
-use geopolars_gdal::df_from_resource;
+use polars_gdal::df_from_resource;
 let df = df_from_resource("my_shapefile.shp", None).unwrap();
 println!("{}", df);
 ```
 
 ### Example 2: DataFrame from raw bytes
 ```rust # ignore
-use geopolars_gdal::df_from_bytes;
+use polars_gdal::df_from_bytes;
 
 let geojson = r#"{"type":"FeatureCollection","features":[{"type":"Feature","properties":{"name":"foo"},"geometry":{"type":"Point","coordinates":[1,2]}},{"type":"Feature","properties":{"name":"bar"},"geometry":{"type":"Point","coordinates":[3,4]}}]}"#.as_bytes();
 
@@ -32,7 +32,7 @@ println!("{}", df);
 
 ### Example 3: Dataframe from GDAL Layer with filtering query
 ```rust # ignore
-use geopolars_gdal::{df_from_layer, gdal};
+use polars_gdal::{df_from_layer, gdal};
 use gdal::vector::sql;
 
 let dataset = gdal::Dataset::open("my_shapefile.shp")?;
@@ -45,7 +45,7 @@ println!("{}", df);
 
 ### Example 4: Dataframe from Latitude / Longitude CSV with custom parsing options
 ```rust # ignore
-let mut params = geopolars_gdal::Params::default();
+let mut params = polars_gdal::Params::default();
 let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
 params.open_options = Some(&csv_parsing_options);
  
@@ -55,7 +55,7 @@ println!("{}", df);
 
 ### Example 5: Dataframe from a PostGIS table
 ```rust # ignore
-use geopolars_gdal::{df_from_resource, Params};
+use polars_gdal::{df_from_resource, Params};
 
 let mut params = Params::default();
 params.layer_name = Some("some_table_name");
@@ -65,7 +65,7 @@ println!("{}", df);
 
 ### Example 6: GeoJSON bytes from a Dataframe
 ```rust # ignore
-use geopolars_gdal::{gdal_bytes_from_df, WriteParams};
+use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
@@ -74,7 +74,7 @@ let geojson_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 
 ### Example 6: GeoJSON bytes from a Dataframe
 ```rust # ignore
-use geopolars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
+use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
@@ -83,7 +83,7 @@ let json_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 
 ### Example 7: Write a shapefile to disk from a Dataframe
 ```rust # ignore
-use geopolars_gdal::{gdal, gdal_dataset_from_df, WriteParams};
+use polars_gdal::{gdal, gdal_dataset_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let shapefile_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
