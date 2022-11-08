@@ -83,7 +83,7 @@ let json_bytes = gdal_bytes_from_df(&df, &json_driver)?;
 
 ### Example 7: Write a shapefile to disk from a Dataframe
 ```rust # ignore
-use geopolars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
+use geopolars_gdal::{gdal, gdal_dataset_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let shapefile_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
