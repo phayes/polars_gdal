@@ -350,7 +350,7 @@ pub fn df_from_layer<'l>(
     };
 
     let mut fid_series = UnprocessedSeries {
-        name: fid_column_name.clone().unwrap_or("").to_owned(),
+        name: fid_column_name.unwrap_or("").to_owned(),
         nullable: false,
         datatype: UnprocessedDataType::Fid,
         data: Vec::with_capacity(feat_count.unwrap_or(100) as usize),
@@ -598,7 +598,7 @@ pub fn gdal_bytes_from_df(
     // TODO: Support rasters
     let mut dataset = driver.create_vector_only(&input_mem_path)?;
 
-    let _layer = gdal_layer_from_df(&df, &mut dataset, params)?;
+    let _layer = gdal_layer_from_df(df, &mut dataset, params)?;
     dataset.flush_cache();
 
     let mut owned_bytes = vec![];
@@ -634,7 +634,7 @@ pub fn gdal_resource_from_df<P: AsRef<Path>>(
     // TODO: Support rasters
     let mut dataset = driver.create_vector_only(path)?;
 
-    let _layer = gdal_layer_from_df(&df, &mut dataset, params)?;
+    let _layer = gdal_layer_from_df(df, &mut dataset, params)?;
     dataset.flush_cache();
 
     Ok(dataset)
@@ -655,7 +655,7 @@ fn polars_value_to_gdal_value(
         AnyValue::Float32(val) => Some(GdalValue::RealValue(*val as f64)),
         AnyValue::Float64(val) => Some(GdalValue::RealValue(*val)),
         AnyValue::Utf8(val) => Some(GdalValue::StringValue(val.to_string())),
-        AnyValue::Utf8Owned(val) => Some(GdalValue::StringValue(val.to_string().into())),
+        AnyValue::Utf8Owned(val) => Some(GdalValue::StringValue(val.to_string())),
         AnyValue::Boolean(val) => Some(GdalValue::IntegerValue(*val as i32)),
         AnyValue::Date(_val) => todo!(),
         AnyValue::Time(val) => Some(GdalValue::Integer64Value(*val)),
@@ -712,7 +712,7 @@ fn polars_anyvalue_to_gdal_geometry(
         GeometryFormat::WKB => match anyval {
             AnyValue::Binary(geom) => Ok(gdal::vector::Geometry::from_wkb(geom)?),
             _ => {
-                return Err(Error::GeometryColumnWrongType(
+                Err(Error::GeometryColumnWrongType(
                     geom_col.to_owned(),
                     polars::datatypes::DataType::Binary,
                     anyval.dtype(),
@@ -723,7 +723,7 @@ fn polars_anyvalue_to_gdal_geometry(
             AnyValue::Utf8(geom) => Ok(gdal::vector::Geometry::from_wkt(geom)?),
             AnyValue::Utf8Owned(geom) => Ok(gdal::vector::Geometry::from_wkt(geom.as_str())?),
             _ => {
-                return Err(Error::GeometryColumnWrongType(
+                Err(Error::GeometryColumnWrongType(
                     geom_col.to_owned(),
                     polars::datatypes::DataType::Utf8,
                     anyval.dtype(),
