@@ -23,7 +23,7 @@ use std::sync::atomic::AtomicU64;
 use std::sync::atomic::Ordering;
 use unprocessed_series::*;
 
-/// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
+/// Parameters to configure the conversion of a GDAL dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
 pub struct ReadParams<'a> {
     /// GDal bitflags used by [`Dataset::open_ex`]. Flags are combined with a bitwise OR `|`.
@@ -86,7 +86,7 @@ pub struct ReadParams<'a> {
     pub offset: Option<usize>,
 }
 
-/// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
+/// Parameters to configure the conversion of a Polars DataFrame to a GDAL dataset.
 #[derive(Debug, Default)]
 pub struct WriteParams<'a> {
     /// For multi-layer files, the specific layer to read. If None, the first layer will be read.
