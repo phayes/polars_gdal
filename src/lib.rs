@@ -618,14 +618,14 @@ pub fn gdal_bytes_from_df(
 ///
 /// # Example
 /// ```rust # ignore
-/// use polars_gdal::{gdal, gdal_dataset_from_df};
+/// use polars_gdal::{gdal, gdal_resource_from_df};
 ///
 /// let df: DataFrame = ...;
 /// let shapefule_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
-/// let dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp", None)?;
+/// let dataset = gdal_resource_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp", None)?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```
-pub fn gdal_dataset_from_df<P: AsRef<Path>>(
+pub fn gdal_resource_from_df<P: AsRef<Path>>(
     df: &DataFrame,
     driver: &gdal::Driver,
     path: P,
