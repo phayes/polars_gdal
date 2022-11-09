@@ -25,14 +25,14 @@ use unprocessed_series::*;
 
 /// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
 #[derive(Debug, Default)]
-pub struct Params<'a> {
+pub struct ReadParams<'a> {
     /// GDal bitflags used by [`Dataset::open_ex`]. Flags are combined with a bitwise OR `|`.
     ///
     /// # Example
     /// ```
     /// use polars_gdal::gdal;
     ///
-    /// let mut params = polars_gdal::Params::default();
+    /// let mut params = polars_gdal::ReadParams::default();
     /// params.open_flags = gdal::GdalOpenFlags::GDAL_OF_READONLY | gdal::GdalOpenFlags::GDAL_OF_VERBOSE_ERROR;
     /// ```
     pub open_flags: gdal::GdalOpenFlags,
@@ -46,7 +46,7 @@ pub struct Params<'a> {
     /// ```
     /// use polars_gdal::gdal;
     ///
-    /// let mut params = polars_gdal::Params::default();
+    /// let mut params = polars_gdal::ReadParams::default();
     /// let csv_parsing_options = ["EMPTY_STRING_AS_NULL=YES", "KEEP_GEOM_COLUMNS=NO", "X_POSSIBLE_NAMES=Lon*", "Y_POSSIBLE_NAMES=Lat*"];
     /// params.open_options = Some(&csv_parsing_options);
     /// ```
@@ -86,7 +86,32 @@ pub struct Params<'a> {
     pub offset: Option<usize>,
 }
 
-impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
+/// Parameters to configure the conversion of a vector dataset to a Polars DataFrame.
+#[derive(Debug, Default)]
+pub struct WriteParams<'a> {
+    /// For multi-layer files, the specific layer to read. If None, the first layer will be read.
+    pub layer_name: Option<&'a str>,
+
+    /// The Geometry colum name. By default `geomery` will be used.
+    pub geometry_column_name: Option<&'a str>,
+
+    /// The Geometry format to use, defaults to WKB. In the future, this will default to GeoArrow format.
+    pub geometry_format: GeometryFormat,
+
+    /// The Feature ID column name.
+    pub fid_column_name: Option<&'a str>,
+
+    /// The SRS of the newly created layer, or `None` for no SRS.
+    pub srs: Option<&'a SpatialRef>,
+
+    /// The type of geometry for the new layer, or `None` to auto-detect the geometry type.
+    pub geometry_type: Option<gdal::vector::OGRwkbGeometryType::Type>,
+
+    /// Additional driver-specific options to pass to GDAL, in the form `name=value`.
+    pub options: Option<&'a [&'a str]>,
+}
+
+impl<'a> Into<gdal::DatasetOptions<'a>> for &ReadParams<'a> {
     fn into(self) -> gdal::DatasetOptions<'a> {
         gdal::DatasetOptions {
             open_flags: self.open_flags,
@@ -97,7 +122,7 @@ impl<'a> Into<gdal::DatasetOptions<'a>> for &Params<'a> {
     }
 }
 
-/// The geometry format to use when writing to the dataframe.
+/// The geometry format to use when reading or writing to the dataframe.
 ///
 /// Defaults to WKB, in the future this default will change to GeoArrow format
 #[derive(Debug, Clone, Copy)]
@@ -148,7 +173,7 @@ impl Into<UnprocessedDataType> for GeometryFormat {
 pub fn df_from_bytes(
     data: &[u8],
     filename_hint: Option<&str>,
-    params: Option<Params>,
+    params: Option<ReadParams>,
 ) -> Result<DataFrame, Error> {
     use gdal_sys::VSIFCloseL;
     use gdal_sys::VSIFileFromMemBuffer;
@@ -267,7 +292,7 @@ pub fn df_from_bytes(
 /// ```
 pub fn df_from_resource<P: AsRef<Path>>(
     path: P,
-    params: Option<Params>,
+    params: Option<ReadParams>,
 ) -> Result<DataFrame, Error> {
     let params = params.unwrap_or_default();
     let gdal_options: gdal::DatasetOptions = (&params).into();
@@ -305,7 +330,7 @@ pub fn df_from_resource<P: AsRef<Path>>(
 /// ```
 pub fn df_from_layer<'l>(
     layer: &mut gdal::vector::Layer<'l>,
-    params: Option<Params>,
+    params: Option<ReadParams>,
 ) -> Result<DataFrame, Error> {
     let feat_count = layer.try_feature_count();
 
@@ -459,7 +484,7 @@ pub fn df_from_layer<'l>(
 }
 
 /// Given a dataframe, create a GDAL layer
-/// 
+///
 /// Given a pre-existing GDAL Dataset, create a new layer from a Polars dataframe.
 ///
 /// # Example
@@ -473,11 +498,15 @@ pub fn df_from_layer<'l>(
 pub fn gdal_layer_from_df<'a>(
     df: &DataFrame,
     dataset: &'a mut gdal::Dataset,
+    params: Option<WriteParams>,
 ) -> Result<gdal::vector::Layer<'a>, Error> {
+    let params = params.unwrap_or_default();
+
+    let geometry_column_name = params.geometry_column_name.unwrap_or("geometry");
     let row_count = df.height();
 
     if row_count == 0 {
-        panic!("No rows to do");
+        return Err(Error::EmptyDataframe);
     }
 
     // All prop columns as (col-index, name, field-type)
@@ -486,28 +515,34 @@ pub fn gdal_layer_from_df<'a>(
         .iter()
         .enumerate()
         .map(|(i, c)| (i, c.name(), polars_type_id_to_gdal_type_id(c.dtype())))
-        .filter(|(_i, n, t)| *n != "geometry" && t.is_some())
+        .filter(|(_i, n, t)| *n != geometry_column_name && t.is_some())
         .map(|(i, n, t)| (i, n, t.unwrap()))
         .collect::<Vec<_>>();
 
-    let geom_idx = df.find_idx_by_name("geometry").unwrap(); // TODO: Error that geom column cannot be found
+    let geom_idx = df
+        .find_idx_by_name(geometry_column_name)
+        .ok_or_else(|| Error::CannotFindGeometryColumn(geometry_column_name.to_owned()))?;
 
     let mut row = df.get_row(0);
-    let first_geom = match &row.0[geom_idx] {
-        AnyValue::Binary(geom) => gdal::vector::Geometry::from_wkb(geom)?,
-        AnyValue::BinaryOwned(geom) => gdal::vector::Geometry::from_wkb(geom)?,
-        AnyValue::Utf8(geom) => gdal::vector::Geometry::from_wkt(geom)?,
-        AnyValue::Utf8Owned(geom) => gdal::vector::Geometry::from_wkt(geom.as_str())?,
-        AnyValue::Null => todo!("Handle case where geometry column is partially nulls and we need to scan down to find the type"),
-        _ => panic!("Geometry column must be of type Binary or BinaryOwned"), // TODO: Error
+
+    let geom_type = match params.geometry_type {
+        Some(geom_type) => geom_type,
+        None => {
+            let first_geom = polars_anyvalue_to_gdal_geometry(
+                &row.0[geom_idx],
+                params.geometry_format,
+                geometry_column_name,
+            )
+            .map_err(|e| Error::UnableToDetermineGeometryType(format!("{}", e)))?;
+            first_geom.geometry_type()
+        }
     };
-    let geom_type = first_geom.geometry_type();
 
     let mut layer = dataset.create_layer(LayerOptions {
-        name: "geometry", // TODO: Passed layer name or geometry column name
-        srs: Some(&SpatialRef::from_epsg(4326).unwrap()),
+        name: geometry_column_name,
+        srs: params.srs,
         ty: geom_type,
-        ..Default::default()
+        options: params.options,
     })?;
 
     let fields_def: Vec<(&str, OGRFieldType::Type)> =
@@ -516,14 +551,11 @@ pub fn gdal_layer_from_df<'a>(
 
     for idx in 0..row_count {
         df.get_row_amortized(idx, &mut row);
-        let geom = match &row.0[geom_idx] {
-            AnyValue::Binary(geom) => gdal::vector::Geometry::from_wkb(geom)?,
-            AnyValue::BinaryOwned(geom) => gdal::vector::Geometry::from_wkb(&geom)?,
-            AnyValue::Utf8(geom) => gdal::vector::Geometry::from_wkt(geom)?,
-            AnyValue::Utf8Owned(geom) => gdal::vector::Geometry::from_wkt(geom.as_str())?,
-            AnyValue::Null => gdal::vector::Geometry::empty(geom_type)?,
-            _ => panic!("Geometry column must be of type Binary or BinaryOwned"), // TODO: Error
-        };
+        let geom = polars_anyvalue_to_gdal_geometry(
+            &row.0[geom_idx],
+            params.geometry_format,
+            geometry_column_name,
+        )?;
         let mut field_values = Vec::with_capacity(props.len());
         let mut field_names = Vec::with_capacity(props.len());
         for (i, n, _) in props.iter() {
@@ -540,17 +572,21 @@ pub fn gdal_layer_from_df<'a>(
 }
 
 /// Given a dataframe, get bytes in a GDAL geospatial format
-/// 
-/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`. 
-/// 
+///
+/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`.
+///
 /// # Example
 /// ```rust # ignore
 /// let df: DataFrame = ...;
 /// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
-/// let geojson_bytes = df_to_bytes(&df, &json_driver)?;
+/// let geojson_bytes = gdal_bytes_from_df(&df, &json_driver, None)?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```
-pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u8>, Error> {
+pub fn gdal_bytes_from_df(
+    df: &DataFrame,
+    driver: &gdal::Driver,
+    params: Option<WriteParams>,
+) -> Result<Vec<u8>, Error> {
     // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
     static BYTES_FROM_DF_MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let input_mem_path = format!(
@@ -562,36 +598,43 @@ pub fn gdal_bytes_from_df(df: &DataFrame, driver: &gdal::Driver) -> Result<Vec<u
     // TODO: Support rasters
     let mut dataset = driver.create_vector_only(&input_mem_path)?;
 
-    let _layer = gdal_layer_from_df(&df, &mut dataset)?;
+    let _layer = gdal_layer_from_df(&df, &mut dataset, params)?;
     dataset.flush_cache();
 
     let mut owned_bytes = vec![];
-    gdal::vsi::call_on_mem_file_bytes( &input_mem_path, |bytes| owned_bytes.extend_from_slice(bytes))?;
+    gdal::vsi::call_on_mem_file_bytes(&input_mem_path, |bytes| {
+        owned_bytes.extend_from_slice(bytes)
+    })?;
 
     Ok(owned_bytes)
 }
 
 /// Given a dataframe, write to a GDAL resource path and return the dataset.
-/// 
-/// If given a path to local disk, the file will be written to local disk. 
+///
+/// If given a path to local disk, the file will be written to local disk.
 /// If given a URI for a GDAL supported remote resource, the dataframe will be written to that resource in the specified geospatial format.
-/// 
-/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`. 
-/// 
+///
+/// Currently, only vector drivers are supported. For raster support, use `gdal_layer_from_df`.
+///
 /// # Example
 /// ```rust # ignore
 /// use polars_gdal::{gdal, gdal_dataset_from_df};
-/// 
+///
 /// let df: DataFrame = ...;
 /// let shapefule_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
-/// let dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp")?;
+/// let dataset = gdal_dataset_from_df(&df, &shapefule_driver, "/some/path/my_shapefile.shp", None)?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```
-pub fn gdal_dataset_from_df<P: AsRef<Path>>(df: &DataFrame, driver: &gdal::Driver, path: P) -> Result<Dataset, Error> {
+pub fn gdal_dataset_from_df<P: AsRef<Path>>(
+    df: &DataFrame,
+    driver: &gdal::Driver,
+    path: P,
+    params: Option<WriteParams>,
+) -> Result<Dataset, Error> {
     // TODO: Support rasters
     let mut dataset = driver.create_vector_only(path)?;
-    
-    let _layer = gdal_layer_from_df(&df, &mut dataset)?;
+
+    let _layer = gdal_layer_from_df(&df, &mut dataset, params)?;
     dataset.flush_cache();
 
     Ok(dataset)
@@ -657,5 +700,38 @@ fn polars_type_id_to_gdal_type_id(polars_type: &DataType) -> Option<OGRFieldType
             _ => None,
         },
         _ => None,
+    }
+}
+
+fn polars_anyvalue_to_gdal_geometry(
+    anyval: &AnyValue,
+    geometry_format: GeometryFormat,
+    geom_col: &str,
+) -> Result<gdal::vector::Geometry, Error> {
+    match geometry_format {
+        GeometryFormat::WKB => match anyval {
+            AnyValue::Binary(geom) => Ok(gdal::vector::Geometry::from_wkb(geom)?),
+            _ => {
+                return Err(Error::GeometryColumnWrongType(
+                    geom_col.to_owned(),
+                    polars::datatypes::DataType::Binary,
+                    anyval.dtype(),
+                ))
+            }
+        },
+        GeometryFormat::WKT => match anyval {
+            AnyValue::Utf8(geom) => Ok(gdal::vector::Geometry::from_wkt(geom)?),
+            AnyValue::Utf8Owned(geom) => Ok(gdal::vector::Geometry::from_wkt(geom.as_str())?),
+            _ => {
+                return Err(Error::GeometryColumnWrongType(
+                    geom_col.to_owned(),
+                    polars::datatypes::DataType::Utf8,
+                    anyval.dtype(),
+                ))
+            }
+        },
+        GeometryFormat::GeoJson => {
+            todo!("TODO: Support GeoJSON via use of geozero");
+        }
     }
 }

@@ -27,4 +27,16 @@ pub enum Error {
 
     #[error("Field named `{0}` not allowed as it would conflict with the feature id column")]
     FidColumnCollision(String),
+
+    #[error("The dataframe geometry column `{0}` was not the right type. Expected type `{1}`, got type `{2}`.")]
+    GeometryColumnWrongType(String, polars::datatypes::DataType, polars::datatypes::DataType),
+
+    #[error("Unable to automatically determine the the geometry type from the first row. Got Error \"{0}\". Hint: Use `polars_gdal::WriteParams::geometry_type` to specify manually.")]
+    UnableToDetermineGeometryType(String),
+
+    #[error("Empty dataframe with no rows")]
+    EmptyDataframe,
+
+    #[error("Cannot find geometry column `{0}` in dataframe")]
+    CannotFindGeometryColumn(String),
 }

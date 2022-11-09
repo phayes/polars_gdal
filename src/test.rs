@@ -24,7 +24,7 @@ fn test_df_from_resource() {
     // println!("{}", _df);
 
     // Test CSV with options
-    let mut params = crate::Params::default();
+    let mut params = crate::ReadParams::default();
     let csv_parsing_options = [
         "EMPTY_STRING_AS_NULL=YES",
         "KEEP_GEOM_COLUMNS=NO",
@@ -71,7 +71,7 @@ fn test_df_from_layer() {
 
 #[allow(dead_code)]
 fn test_postgis() {
-    let mut params = crate::Params::default();
+    let mut params = crate::ReadParams::default();
     params.layer_name = Some("parcel_polygon");
     params.truncating_limit = Some(100);
 
@@ -133,7 +133,7 @@ fn test_gdal_layer_from_df() {
     let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
     let mut dataset = json_driver.create_vector_only("/vsimem/polars_gdal/test_layer_from_df/layer.json").unwrap();
 
-    let _layer = gdal_layer_from_df(&df, &mut dataset).unwrap();
+    let _layer = gdal_layer_from_df(&df, &mut dataset, None).unwrap();
     dataset.flush_cache();
 
     let mut json_bytes = vec![];
@@ -153,6 +153,6 @@ fn test_gdal_bytes_from_df() {
 
     let df = IpcReader::new(cursor).finish().unwrap();
     let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
-    let _geojson_bytes = gdal_bytes_from_df(&df, &json_driver).unwrap();
+    let _geojson_bytes = gdal_bytes_from_df(&df, &json_driver, None).unwrap();
     // println!("{}", String::from_utf8(_geojson_bytes).unwrap());
 }

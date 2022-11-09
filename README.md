@@ -78,7 +78,7 @@ use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
-let json_bytes = gdal_bytes_from_df(&df, &json_driver)?;
+let json_bytes = gdal_bytes_from_df(&df, &json_driver, None)?;
 ```
 
 ### Example 7: Write a shapefile to disk from a DataFrame
@@ -87,5 +87,5 @@ use polars_gdal::{gdal, gdal_dataset_from_df, WriteParams};
 
 let df: DataFrame = ...;
 let shapefile_driver = gdal::DriverManager::get_driver_by_name("ESRI Shapefile")?;
-let _dataset = gdal_dataset_from_df(&df, &shapefile_driver, "/some/path/on/disk/my_shapefile.shp")?;
+let _dataset = gdal_dataset_from_df(&df, &shapefile_driver, "/some/path/on/disk/my_shapefile.shp", None)?;
 ```
