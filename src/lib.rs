@@ -37,10 +37,10 @@ pub struct ReadParams<'a> {
     /// ```
     pub open_flags: gdal::GdalOpenFlags,
 
-    /// List of allowed GDAL drivers. See https://gdal.org/drivers/vector/index.html
+    /// List of allowed GDAL drivers. See <https://gdal.org/drivers/vector/index.html>
     pub allowed_drivers: Option<&'a [&'a str]>,
 
-    /// Array of "KEY=value" strings to pass to the GDAL driver. See https://gdal.org/drivers/vector/index.html
+    /// Array of "KEY=value" strings to pass to the GDAL driver. See <https://gdal.org/drivers/vector/index.html>
     ///
     /// # Example
     /// ```
@@ -216,11 +216,11 @@ pub fn df_from_bytes(
     }
 
     // Generate a safe path to the data that is exclusive to this process-id and uses the filename hint
-    static MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
+    static DF_FROM_BYTS_MEM_FILE_INCREMENTOR: AtomicU64 = AtomicU64::new(0);
     let input_mem_path = format!(
         "/vsimem/polars_gdal/df_from_bytes/{}/{}/{}",
         std::process::id(),
-        MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
+        DF_FROM_BYTS_MEM_FILE_INCREMENTOR.fetch_add(1, Ordering::SeqCst),
         filename_hint
     );
 
