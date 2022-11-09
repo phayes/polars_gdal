@@ -62,23 +62,15 @@ params.layer_name = Some("some_table_name");
  
 let df = df_from_resource("postgresql://user:pass@host/db_name", Some(params)).unwrap();
 println!("{}", df);
+```
 
 ### Example 6: GeoJSON bytes from a Dataframe
 ```rust # ignore
 use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
 
 let df: DataFrame = ...;
-let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
-let geojson_bytes = gdal_bytes_from_df(&df, &json_driver)?;
-```
-
-### Example 6: GeoJSON bytes from a DataFrame
-```rust # ignore
-use polars_gdal::{gdal, gdal_bytes_from_df, WriteParams};
-
-let df: DataFrame = ...;
 let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
-let json_bytes = gdal_bytes_from_df(&df, &json_driver, None)?;
+let geojson_bytes = gdal_bytes_from_df(&df, &json_driver, None)?;
 ```
 
 ### Example 7: Write a shapefile to disk from a DataFrame

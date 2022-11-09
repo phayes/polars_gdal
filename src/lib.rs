@@ -490,7 +490,7 @@ pub fn df_from_layer<'l>(
 /// # Example
 /// ```rust # ignore
 /// let df: DataFrame = ...;
-/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
+/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
 /// let mut dataset: gldal::Dataset = json_driver.create_vector_only("my_json_file.json")?;
 /// layer_from_df(&df, &mut dataset)?;
 /// dataset.flush_cache();
@@ -578,7 +578,7 @@ pub fn gdal_layer_from_df<'a>(
 /// # Example
 /// ```rust # ignore
 /// let df: DataFrame = ...;
-/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson")?;
+/// let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON")?;
 /// let geojson_bytes = gdal_bytes_from_df(&df, &json_driver, None)?;
 /// println!("{}", String::from_utf8(geojson_bytes)?);
 /// ```

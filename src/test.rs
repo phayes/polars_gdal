@@ -98,7 +98,7 @@ fn test_pure_gdal() {
     use crate::gdal;
     let dataset = gdal::Dataset::open("test_data/stations_shapefile.shp.zip").unwrap();
 
-    let json_driver = gdal::DriverManager::get_driver_by_name("GeoJson").unwrap();
+    let json_driver = gdal::DriverManager::get_driver_by_name("GeoJSON").unwrap();
 
     gdal::vsi::create_mem_file("/vsimem/polars_gdal/test_geojson/layer/", vec![]).unwrap();
 
