@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-gdal = { git = "https://github.com/georust/gdal" }
-gdal-sys = { git = "https://github.com/georust/gdal" }
+gdal = "0.14"
+gdal-sys = "0.8"
 polars = { version = "0.25", features = ["dtype-binary", "dtype-date", "dtype-datetime", "rows"] }
 thiserror = { version = "1" }
 
