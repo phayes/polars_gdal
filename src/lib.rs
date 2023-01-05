@@ -523,7 +523,7 @@ pub fn gdal_layer_from_df<'a>(
         .find_idx_by_name(geometry_column_name)
         .ok_or_else(|| Error::CannotFindGeometryColumn(geometry_column_name.to_owned()))?;
 
-    let mut row = df.get_row(0);
+    let mut row = df.get_row(0)?;
 
     let geom_type = match params.geometry_type {
         Some(geom_type) => geom_type,
@@ -550,7 +550,7 @@ pub fn gdal_layer_from_df<'a>(
     layer.create_defn_fields(&fields_def)?;
 
     for idx in 0..row_count {
-        df.get_row_amortized(idx, &mut row);
+        df.get_row_amortized(idx, &mut row)?;
         let geom = polars_anyvalue_to_gdal_geometry(
             &row.0[geom_idx],
             params.geometry_format,

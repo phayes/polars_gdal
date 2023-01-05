@@ -6,8 +6,8 @@ edition = "2021"
 [dependencies]
 gdal = "0.14"
 gdal-sys = "0.8"
-polars = { version = "0.25", features = ["dtype-binary", "dtype-date", "dtype-datetime", "rows"] }
+polars = { version = "0.26", features = ["dtype-binary", "dtype-date", "dtype-datetime", "rows"] }
 thiserror = { version = "1" }
 
 [dev-dependencies]
-polars = { version = "0.25", features = ["ipc"] }
+polars = { version = "0.26", features = ["ipc"] }

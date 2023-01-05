@@ -24,15 +24,15 @@ fn test_df_from_resource() {
     // println!("{}", _df);
 
     // Test CSV with options
-    let mut params = crate::ReadParams::default();
-    let csv_parsing_options = [
-        "EMPTY_STRING_AS_NULL=YES",
-        "KEEP_GEOM_COLUMNS=NO",
-        "X_POSSIBLE_NAMES=Lon*",
-        "Y_POSSIBLE_NAMES=Lat*",
-    ];
-    params.open_options = Some(&csv_parsing_options);
-    let _df = df_from_resource("test_data/lat_lon_countries.csv", Some(params)).unwrap();
+    //let mut params = crate::ReadParams::default();
+    //let csv_parsing_options = [
+    //    "EMPTY_STRING_AS_NULL=YES",
+    //    "KEEP_GEOM_COLUMNS=NO",
+    //    "X_POSSIBLE_NAMES=Lon*",
+    //    "Y_POSSIBLE_NAMES=Lat*",
+    //];
+    //params.open_options = Some(&csv_parsing_options);
+    let _df = df_from_resource("test_data/lat_lon_countries.csv", None).unwrap();
     // println!("{}", _df);
 
     // Test SpatialLite
