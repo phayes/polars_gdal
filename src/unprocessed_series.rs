@@ -167,9 +167,9 @@ impl UnprocessedSeries {
                     ca.into_series()
                 }
                 UnprocessedDataType::Null => {
-                    panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
+                    panic!("geopolars_gdal: Unexpected null value in {}", &self.name)
                 }
-                _ => unimplemented!("geopandas_gdal: Error processing {} - Still need to implement Lists", self.name),
+                _ => unimplemented!("geopolars_gdal: Error processing {} - Still need to implement Lists", self.name),
             }
         } else {
             match self.datatype {
@@ -292,10 +292,10 @@ impl UnprocessedSeries {
                     Series::from_iter(vec)
                 }
                 UnprocessedDataType::Null => {
-                    panic!("geopandas_gdal: Unexpected null value in {}", &self.name)
+                    panic!("geopolars_gdal: Unexpected null value in {}", &self.name)
                 }
                 _ => unimplemented!(
-                    "geopandas_gdal: Error processing {} - Still need to implement Lists",
+                    "geopolars_gdal: Error processing {} - Still need to implement Lists",
                     self.name
                 ),
             }

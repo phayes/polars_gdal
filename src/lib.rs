@@ -8,6 +8,7 @@ mod test;
 
 pub use error::*;
 pub extern crate gdal;
+pub extern crate polars;
 
 use gdal::errors::GdalError;
 use gdal::spatial_ref::SpatialRef;
